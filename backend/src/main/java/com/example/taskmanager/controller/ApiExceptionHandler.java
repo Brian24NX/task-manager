@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import java.util.Map;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,6 +21,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        Map<String, String> fieldErrors = new java.util.LinkedHashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(fe ->
+            fieldErrors.put(fe.getField(), fe.getDefaultMessage())
+        );
+        problem.setProperty("fieldErrors", fieldErrors);
+        return problem;
     }
 }

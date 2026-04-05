@@ -40,6 +40,10 @@ public class Task {
     @Column(nullable = false, length = 20)
     private TaskStatus status = TaskStatus.TODO;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private TaskPriority priority = TaskPriority.MEDIUM;
+
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -68,6 +72,8 @@ public class Task {
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
     public TaskStatus getStatus() { return status; }
     public void setStatus(TaskStatus status) { this.status = status; }
+    public TaskPriority getPriority() { return priority; }
+    public void setPriority(TaskPriority priority) { this.priority = priority; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tasks")
@@ -53,6 +54,16 @@ public class TaskController {
     @PatchMapping("/{id}/status")
     public Task updateStatus(@PathVariable Long id, @RequestParam TaskStatus status) {
         return taskService.updateStatus(id, status);
+    }
+
+    @GetMapping("/search")
+    public List<Task> searchTasks(@RequestParam String q) {
+        return taskService.searchTasks(q);
+    }
+
+    @GetMapping("/stats")
+    public Map<String, Object> getStats() {
+        return taskService.getStats();
     }
 
     @DeleteMapping("/{id}")
