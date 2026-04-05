@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import TaskForm from './components/TaskForm.vue'
 
-const API = '/api/tasks'
+const API = (import.meta.env.VITE_API_URL || '') + '/api/tasks'
 
 const tasks = ref([])
 const loading = ref(false)
