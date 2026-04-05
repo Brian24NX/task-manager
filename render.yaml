@@ -33,7 +33,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://task-manager-api.onrender.com/api/*
+        destination: https://task-manager-api-3f3d.onrender.com/api/*
     headers:
       - path: /*
         name: Cache-Control
