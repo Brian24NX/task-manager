@@ -18,8 +18,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -29,25 +27,9 @@ import java.util.Map;
 public class TaskController {
 
     private final TaskService taskService;
-    private final DataSource dataSource;
 
-    public TaskController(TaskService taskService, DataSource dataSource) {
+    public TaskController(TaskService taskService) {
         this.taskService = taskService;
-        this.dataSource = dataSource;
-    }
-
-    @GetMapping("/debug/db")
-    public Map<String, String> debugDb() {
-        try (Connection conn = dataSource.getConnection()) {
-            var meta = conn.getMetaData();
-            return Map.of(
-                "url", meta.getURL(),
-                "databaseProduct", meta.getDatabaseProductName(),
-                "databaseVersion", meta.getDatabaseProductVersion()
-            );
-        } catch (Exception e) {
-            return Map.of("error", e.getMessage());
-        }
     }
 
     @GetMapping
