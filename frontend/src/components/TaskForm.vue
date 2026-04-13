@@ -15,7 +15,9 @@ const form = reactive({
   description: '',
   dueDate: '',
   status: 'TODO',
-  priority: 'MEDIUM'
+  priority: 'MEDIUM',
+  notifyEmail: false,
+  notifySms: false
 })
 
 const errors = reactive({
@@ -33,6 +35,8 @@ watch(
     form.dueDate = task?.dueDate ?? ''
     form.status = task?.status ?? 'TODO'
     form.priority = task?.priority ?? 'MEDIUM'
+    form.notifyEmail = false
+    form.notifySms = false
     errors.title = ''
     errors.dueDate = ''
   },
@@ -127,6 +131,25 @@ async function submitForm() {
             <option value="HIGH">&#x1F7E0; High</option>
             <option value="URGENT">&#x1F534; Urgent</option>
           </select>
+        </div>
+      </div>
+
+      <div class="notify-section">
+        <label class="notify-label">
+          <span class="material-symbols-rounded" style="font-size:18px">notifications</span>
+          Notify me
+        </label>
+        <div class="notify-options">
+          <label class="notify-check">
+            <input type="checkbox" v-model="form.notifyEmail" />
+            <span class="material-symbols-rounded" style="font-size:16px">email</span>
+            Email
+          </label>
+          <label class="notify-check">
+            <input type="checkbox" v-model="form.notifySms" />
+            <span class="material-symbols-rounded" style="font-size:16px">sms</span>
+            SMS
+          </label>
         </div>
       </div>
 

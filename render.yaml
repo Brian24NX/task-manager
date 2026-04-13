@@ -24,6 +24,8 @@ services:
         fromDatabase:
           name: task-manager-db
           property: password
+      - key: RESEND_API_KEY
+        sync: false
 
   - type: web
     name: task-manager-frontend

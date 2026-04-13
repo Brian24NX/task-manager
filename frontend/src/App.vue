@@ -15,10 +15,37 @@ const showDeleteConfirm = ref(false)
 const taskToDelete = ref(null)
 const toasts = ref([])
 const stats = ref({ total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 })
+const showNotifySettings = ref(false)
+const notifySettings = ref({
+  email: localStorage.getItem('notify_email') || '',
+  phone: localStorage.getItem('notify_phone') || '',
+  onComplete: localStorage.getItem('notify_on_complete') === 'true',
+  onCompleteEmail: localStorage.getItem('notify_complete_email') !== 'false',
+  onCompleteSms: localStorage.getItem('notify_complete_sms') !== 'false'
+})
+
+// Pending notification info (set during save, used after API returns)
+let pendingNotify = null
 
 let searchTimeout = null
 
 const today = new Date().toISOString().slice(0, 10)
+
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+})
+
+const todayFormatted = computed(() => {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+})
+
+const completionPercent = computed(() => {
+  if (stats.value.total === 0) return 0
+  return Math.round((stats.value.done / stats.value.total) * 100)
+})
 
 function getTomorrow() {
   const d = new Date()
@@ -115,16 +142,57 @@ async function refreshStats() {
   }
 }
 
+function saveNotifySettings() {
+  localStorage.setItem('notify_email', notifySettings.value.email)
+  localStorage.setItem('notify_phone', notifySettings.value.phone)
+  localStorage.setItem('notify_on_complete', notifySettings.value.onComplete)
+  localStorage.setItem('notify_complete_email', notifySettings.value.onCompleteEmail)
+  localStorage.setItem('notify_complete_sms', notifySettings.value.onCompleteSms)
+  showNotifySettings.value = false
+  addToast('Notification settings saved')
+}
+
+async function sendNotification(taskTitle, eventType, notifyEmail, notifySms) {
+  if (!notifyEmail && !notifySms) return
+  const NOTIFY_API = (import.meta.env.VITE_API_URL || '') + '/api/notifications/send'
+  try {
+    const res = await fetch(NOTIFY_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: notifySettings.value.email,
+        phone: notifySettings.value.phone,
+        notifyEmail,
+        notifySms,
+        taskTitle,
+        eventType
+      })
+    })
+    if (res.ok) {
+      const data = await res.json()
+      for (const r of data.results || []) {
+        addToast(r, r.toLowerCase().includes('failed') ? 'warning' : 'success')
+      }
+    }
+  } catch (err) {
+    addToast('Notification error: ' + err.message, 'warning')
+  }
+}
+
 async function saveTask(task) {
   const isEditing = Boolean(editingTask.value)
   const url = isEditing ? `${API}/${editingTask.value.id}` : API
   const method = isEditing ? 'PUT' : 'POST'
 
+  const wantsEmail = task.notifyEmail
+  const wantsSms = task.notifySms
+  const { notifyEmail, notifySms, ...taskData } = task
+
   try {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(task)
+      body: JSON.stringify(taskData)
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -134,6 +202,10 @@ async function saveTask(task) {
     cancelForm()
     await fetchTasks()
     await refreshStats()
+
+    if (!isEditing && (wantsEmail || wantsSms)) {
+      await sendNotification(taskData.title, 'CREATED', wantsEmail, wantsSms)
+    }
   } catch (err) {
     addToast(err.message, 'error')
   }
@@ -147,6 +219,15 @@ async function quickStatus(task, status) {
     addToast(`Task ${label}`)
     await fetchTasks()
     await refreshStats()
+
+    if (status === 'DONE' && notifySettings.value.onComplete) {
+      await sendNotification(
+        task.title,
+        'COMPLETED',
+        notifySettings.value.onCompleteEmail,
+        notifySettings.value.onCompleteSms
+      )
+    }
   } catch (err) {
     addToast(err.message, 'error')
   }
@@ -273,14 +354,94 @@ onMounted(() => {
     </div>
   </div>
 
+  <!-- Notification Settings Modal -->
+  <div v-if="showNotifySettings" class="modal-overlay" @click.self="showNotifySettings = false">
+    <div class="modal-card notify-settings-card">
+      <div class="modal-icon">
+        <span class="material-symbols-rounded">notifications_active</span>
+      </div>
+      <h3>Notification Settings</h3>
+      <p class="notify-hint">Configure where to receive notifications when tasks are created or completed.</p>
+
+      <div class="notify-form">
+        <div class="form-group">
+          <label for="notify-email">
+            <span class="material-symbols-rounded" style="font-size:16px">email</span>
+            Email Address
+          </label>
+          <input id="notify-email" v-model="notifySettings.email" type="email" placeholder="you@example.com" />
+        </div>
+
+        <div class="form-group">
+          <label for="notify-phone">
+            <span class="material-symbols-rounded" style="font-size:16px">phone</span>
+            Phone Number
+          </label>
+          <input id="notify-phone" v-model="notifySettings.phone" type="tel" placeholder="+1234567890" />
+        </div>
+
+        <div class="notify-completion-section">
+          <label class="notify-check">
+            <input type="checkbox" v-model="notifySettings.onComplete" />
+            Notify me when tasks are completed
+          </label>
+          <div v-if="notifySettings.onComplete" class="notify-sub-options">
+            <label class="notify-check">
+              <input type="checkbox" v-model="notifySettings.onCompleteEmail" />
+              <span class="material-symbols-rounded" style="font-size:14px">email</span> via Email
+            </label>
+            <label class="notify-check">
+              <input type="checkbox" v-model="notifySettings.onCompleteSms" />
+              <span class="material-symbols-rounded" style="font-size:14px">sms</span> via SMS
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="showNotifySettings = false">Cancel</button>
+        <button class="btn-submit" @click="saveNotifySettings">
+          <span class="material-symbols-rounded" style="font-size:18px">save</span>
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="app-header">
     <div class="header-content">
-      <h1>
-        <span class="material-symbols-rounded" style="font-size:28px">task_alt</span>
-        Task Manager
-      </h1>
-      <p>Stay organized and get things done.</p>
+      <div class="header-top">
+        <div class="header-left">
+          <div class="header-logo">
+            <span class="material-symbols-rounded">task_alt</span>
+          </div>
+          <div>
+            <h1>Task Manager</h1>
+            <p class="header-date">{{ todayFormatted }}</p>
+          </div>
+        </div>
+        <button class="btn-notify-settings" @click="showNotifySettings = true" title="Notification Settings">
+          <span class="material-symbols-rounded">notifications</span>
+        </button>
+      </div>
+      <div class="header-greeting">
+        <h2>{{ greeting }}!</h2>
+        <p v-if="stats.total > 0">
+          You have <strong>{{ stats.todo + stats.inProgress }}</strong> active {{ (stats.todo + stats.inProgress) === 1 ? 'task' : 'tasks' }}
+          <span v-if="stats.overdue > 0" class="header-overdue">&middot; {{ stats.overdue }} overdue</span>
+        </p>
+        <p v-else>No tasks yet. Create one to get started!</p>
+      </div>
+      <div v-if="stats.total > 0" class="header-progress">
+        <div class="progress-info">
+          <span>Progress</span>
+          <span>{{ completionPercent }}%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: completionPercent + '%' }"></div>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -437,17 +598,27 @@ onMounted(() => {
       v-if="!loading && filteredAndSorted.length === 0"
       class="empty-state"
     >
-      <span class="material-symbols-rounded">
-        {{ searchQuery || filterDate || filterStatus ? 'search_off' : 'checklist' }}
-      </span>
+      <div class="empty-state-icon">
+        <span class="material-symbols-rounded">
+          {{ searchQuery || filterDate || filterStatus ? 'search_off' : 'add_task' }}
+        </span>
+      </div>
       <h3 v-if="searchQuery || filterDate || filterStatus">No matching tasks</h3>
       <h3 v-else>No tasks yet</h3>
       <p v-if="searchQuery || filterDate || filterStatus">
         Try adjusting your search or filters.
       </p>
       <p v-else>
-        Click "New Task" to create your first task.
+        Click "New Task" to create your first task and get started.
       </p>
+      <button v-if="!(searchQuery || filterDate || filterStatus)" class="btn-primary empty-cta" @click="startCreate">
+        <span class="material-symbols-rounded">add</span>
+        Create Your First Task
+      </button>
     </div>
   </main>
+
+  <footer class="app-footer">
+    <p>Task Manager &middot; Stay organized, stay productive</p>
+  </footer>
 </template>
