@@ -24,6 +24,8 @@ services:
         fromDatabase:
           name: task-manager-db
           property: password
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
       - key: RESEND_API_KEY
         sync: false
 

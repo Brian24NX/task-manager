@@ -6,7 +6,10 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache bash
 WORKDIR /app
 COPY --from=build /app/target/task-manager-backend-0.0.1-SNAPSHOT.jar app.jar
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
+ENTRYPOINT ["./entrypoint.sh"]
