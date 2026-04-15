@@ -200,8 +200,7 @@ async function saveTask(task) {
     }
     addToast(isEditing ? 'Task updated successfully' : 'Task created successfully')
     cancelForm()
-    await fetchTasks()
-    await refreshStats()
+    await Promise.all([fetchTasks(), refreshStats()])
 
     if (!isEditing && (wantsEmail || wantsSms)) {
       await sendNotification(taskData.title, 'CREATED', wantsEmail, wantsSms)
@@ -217,8 +216,7 @@ async function quickStatus(task, status) {
     if (!res.ok) throw new Error('Could not update status')
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
     addToast(`Task ${label}`)
-    await fetchTasks()
-    await refreshStats()
+    await Promise.all([fetchTasks(), refreshStats()])
 
     if (status === 'DONE' && notifySettings.value.onComplete) {
       await sendNotification(
@@ -246,8 +244,7 @@ async function executeDelete() {
     addToast('Task deleted successfully')
     showDeleteConfirm.value = false
     taskToDelete.value = null
-    await fetchTasks()
-    await refreshStats()
+    await Promise.all([fetchTasks(), refreshStats()])
   } catch (err) {
     addToast(err.message, 'error')
   }

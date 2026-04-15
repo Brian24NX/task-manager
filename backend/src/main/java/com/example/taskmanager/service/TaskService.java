@@ -63,12 +63,22 @@ public class TaskService {
     }
 
     public Map<String, Object> getStats() {
+        List<Object[]> rows = taskRepository.getStatsAggregated(LocalDate.now());
         Map<String, Object> stats = new java.util.LinkedHashMap<>();
-        stats.put("total", taskRepository.count());
-        stats.put("todo", taskRepository.countByStatus(TaskStatus.TODO));
-        stats.put("inProgress", taskRepository.countByStatus(TaskStatus.IN_PROGRESS));
-        stats.put("done", taskRepository.countByStatus(TaskStatus.DONE));
-        stats.put("overdue", taskRepository.countByDueDateBeforeAndStatusNot(LocalDate.now(), TaskStatus.DONE));
+        if (rows.isEmpty() || rows.get(0)[0] == null) {
+            stats.put("total", 0L);
+            stats.put("todo", 0L);
+            stats.put("inProgress", 0L);
+            stats.put("done", 0L);
+            stats.put("overdue", 0L);
+        } else {
+            Object[] row = rows.get(0);
+            stats.put("total", ((Number) row[0]).longValue());
+            stats.put("todo", ((Number) row[1]).longValue());
+            stats.put("inProgress", ((Number) row[2]).longValue());
+            stats.put("done", ((Number) row[3]).longValue());
+            stats.put("overdue", ((Number) row[4]).longValue());
+        }
         return stats;
     }
 
