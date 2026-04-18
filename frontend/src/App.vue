@@ -111,6 +111,37 @@ const doneTasks = computed(() => {
   return done
 })
 
+// --- Confetti burst on completion ---
+const CONFETTI_COLORS = ['#a78bfa', '#22d3ee', '#34d399', '#fbbf24', '#f472b6', '#60a5fa']
+function fireConfetti(anchorEl) {
+  if (typeof window === 'undefined') return
+  const rect = anchorEl.getBoundingClientRect()
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  const burst = document.createElement('div')
+  burst.className = 'confetti-burst'
+  burst.style.left = `${cx}px`
+  burst.style.top = `${cy}px`
+  const count = 22
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('span')
+    piece.className = 'confetti-piece'
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4
+    const dist = 80 + Math.random() * 90
+    const dx = Math.cos(angle) * dist
+    const dy = Math.sin(angle) * dist - 40
+    const rot = (Math.random() * 720 - 360).toFixed(0) + 'deg'
+    piece.style.setProperty('--dx', `${dx.toFixed(1)}px`)
+    piece.style.setProperty('--dy', `${dy.toFixed(1)}px`)
+    piece.style.setProperty('--rot', rot)
+    piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length]
+    piece.style.animationDelay = `${Math.random() * 60}ms`
+    burst.appendChild(piece)
+  }
+  document.body.appendChild(burst)
+  setTimeout(() => burst.remove(), 1200)
+}
+
 // --- Toasts ---
 let toastId = 0
 function addToast(message, type = 'success') {
@@ -250,8 +281,11 @@ async function saveTask(task) {
   }
 }
 
-async function quickStatus(task, status) {
+async function quickStatus(task, status, event) {
   try {
+    if (status === 'DONE' && event?.currentTarget) {
+      fireConfetti(event.currentTarget)
+    }
     const res = await fetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not update status')
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
@@ -360,6 +394,11 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Aurora background orbs -->
+  <div class="aurora-orb a"></div>
+  <div class="aurora-orb b"></div>
+  <div class="aurora-orb c"></div>
+
   <!-- Toasts -->
   <div class="toast-container">
     <div
@@ -612,7 +651,7 @@ onMounted(() => {
               <button
                 class="icon-btn done-btn"
                 title="Mark done"
-                @click="quickStatus(task, 'DONE')"
+                @click="quickStatus(task, 'DONE', $event)"
               >
                 <span class="material-symbols-rounded">check_circle</span>
               </button>
@@ -674,7 +713,7 @@ onMounted(() => {
             <button
               class="icon-btn done-btn"
               title="Mark done"
-              @click="quickStatus(task, 'DONE')"
+              @click="quickStatus(task, 'DONE', $event)"
             >
               <span class="material-symbols-rounded">check_circle</span>
             </button>
