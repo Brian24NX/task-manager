@@ -38,6 +38,170 @@ const taskToDelete = ref(null)
 const toasts = ref([])
 const stats = ref(loadCachedStats())
 const showNotifySettings = ref(false)
+const showNameEdit = ref(false)
+const userName = ref(localStorage.getItem('tm_user_name') || 'Brian')
+const nameDraft = ref(userName.value)
+
+// --- Theme ---
+const theme = ref(resolveInitialTheme())
+function resolveInitialTheme() {
+  try {
+    const saved = localStorage.getItem('tm_theme')
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch (_) {}
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+    return 'dark'
+  }
+  return 'light'
+}
+function applyTheme(t) {
+  if (typeof document === 'undefined') return
+  document.documentElement.setAttribute('data-theme', t)
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (meta) meta.setAttribute('content', t === 'dark' ? '#0c0c14' : '#e0f2fe')
+}
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  try { localStorage.setItem('tm_theme', theme.value) } catch (_) {}
+  applyTheme(theme.value)
+}
+applyTheme(theme.value)
+
+// --- Weather (Open-Meteo + BigDataCloud reverse geocoding) ---
+const weather = ref(null)
+const weatherError = ref('')
+const WEATHER_CACHE_KEY = 'tm_weather_cache_v1'
+const WEATHER_TTL_MS = 30 * 60 * 1000
+
+const isImperial = (() => {
+  try {
+    const region = new Intl.Locale(navigator.language || 'en-US').maximize().region
+    return ['US', 'LR', 'MM', 'BS', 'BZ', 'KY', 'PW'].includes(region)
+  } catch (_) {
+    return (navigator.language || '').toLowerCase().startsWith('en-us')
+  }
+})()
+
+function weatherVisual(code) {
+  if (code === 0) return { label: 'Sunny', icon: 'wb_sunny', class: '' }
+  if (code === 1 || code === 2) return { label: 'Partly cloudy', icon: 'partly_cloudy_day', class: 'cloudy' }
+  if (code === 3) return { label: 'Cloudy', icon: 'cloud', class: 'cloudy' }
+  if (code === 45 || code === 48) return { label: 'Foggy', icon: 'foggy', class: 'fog' }
+  if (code >= 51 && code <= 57) return { label: 'Drizzle', icon: 'rainy', class: 'rainy' }
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return { label: 'Rainy', icon: 'rainy', class: 'rainy' }
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return { label: 'Snowy', icon: 'ac_unit', class: 'snow' }
+  if (code >= 95) return { label: 'Stormy', icon: 'thunderstorm', class: 'storm' }
+  return { label: 'Weather', icon: 'cloud', class: 'cloudy' }
+}
+
+async function loadWeather() {
+  try {
+    const cachedRaw = localStorage.getItem(WEATHER_CACHE_KEY)
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw)
+      if (cached && Date.now() - cached.ts < WEATHER_TTL_MS) {
+        weather.value = cached.data
+        return
+      }
+    }
+  } catch (_) {}
+
+  if (!('geolocation' in navigator)) {
+    weatherError.value = 'no-geo'
+    return
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords
+      try {
+        const unit = isImperial ? 'fahrenheit' : 'celsius'
+        const [wRes, gRes] = await Promise.all([
+          fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&temperature_unit=${unit}`),
+          fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`).catch(() => null)
+        ])
+        if (!wRes.ok) throw new Error('weather fetch failed')
+        const wData = await wRes.json()
+        let city = ''
+        if (gRes && gRes.ok) {
+          const g = await gRes.json()
+          city = g.city || g.locality || g.principalSubdivision || ''
+        }
+        const data = {
+          temp: Math.round(wData.current?.temperature_2m ?? 0),
+          unit: isImperial ? 'F' : 'C',
+          code: wData.current?.weather_code ?? 0,
+          city
+        }
+        weather.value = data
+        try { localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })) } catch (_) {}
+      } catch (err) {
+        weatherError.value = 'fetch-failed'
+      }
+    },
+    () => { weatherError.value = 'denied' },
+    { timeout: 8000, maximumAge: 10 * 60 * 1000 }
+  )
+}
+
+// --- Daily quote ---
+const QUOTES = [
+  { text: 'Time is money, don\u2019t waste it.', author: 'Benjamin Franklin' },
+  { text: 'The secret of getting ahead is getting started.', author: 'Mark Twain' },
+  { text: 'It always seems impossible until it\u2019s done.', author: 'Nelson Mandela' },
+  { text: 'Do the hard jobs first. The easy jobs will take care of themselves.', author: 'Dale Carnegie' },
+  { text: 'Little by little, one travels far.', author: 'J.R.R. Tolkien' },
+  { text: 'Action is the foundational key to all success.', author: 'Pablo Picasso' },
+  { text: 'The way to get started is to quit talking and begin doing.', author: 'Walt Disney' },
+  { text: 'Well done is better than well said.', author: 'Benjamin Franklin' },
+  { text: 'You don\u2019t have to be great to start, but you have to start to be great.', author: 'Zig Ziglar' },
+  { text: 'Focus on being productive instead of busy.', author: 'Tim Ferriss' },
+  { text: 'What gets measured gets managed.', author: 'Peter Drucker' },
+  { text: 'The best way out is always through.', author: 'Robert Frost' },
+  { text: 'Small deeds done are better than great deeds planned.', author: 'Peter Marshall' },
+  { text: 'Quality means doing it right when no one is looking.', author: 'Henry Ford' },
+  { text: 'Motivation gets you going; discipline keeps you growing.', author: 'John C. Maxwell' },
+  { text: 'One day, or day one. You decide.', author: 'Unknown' },
+  { text: 'Great things are done by a series of small things brought together.', author: 'Vincent Van Gogh' },
+  { text: 'Don\u2019t watch the clock; do what it does. Keep going.', author: 'Sam Levenson' },
+  { text: 'A goal without a plan is just a wish.', author: 'Antoine de Saint-Exup\u00e9ry' },
+  { text: 'Energy and persistence conquer all things.', author: 'Benjamin Franklin' },
+  { text: 'Discipline is the bridge between goals and accomplishment.', author: 'Jim Rohn' },
+  { text: 'You miss 100% of the shots you don\u2019t take.', author: 'Wayne Gretzky' },
+  { text: 'Start where you are. Use what you have. Do what you can.', author: 'Arthur Ashe' },
+  { text: 'Simplicity is the ultimate sophistication.', author: 'Leonardo da Vinci' },
+  { text: 'Success is the sum of small efforts repeated day in and day out.', author: 'Robert Collier' },
+  { text: 'Don\u2019t count the days, make the days count.', author: 'Muhammad Ali' },
+  { text: 'The best time to plant a tree was 20 years ago. The second best time is now.', author: 'Chinese proverb' },
+  { text: 'Make each day your masterpiece.', author: 'John Wooden' },
+  { text: 'Whether you think you can, or you think you can\u2019t \u2013 you\u2019re right.', author: 'Henry Ford' },
+  { text: 'Don\u2019t be afraid to give up the good to go for the great.', author: 'John D. Rockefeller' },
+  { text: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', author: 'Aristotle' },
+  { text: 'The journey of a thousand miles begins with a single step.', author: 'Lao Tzu' },
+  { text: 'If you can dream it, you can do it.', author: 'Walt Disney' },
+  { text: 'Productivity is never an accident. It is always the result of planning and effort.', author: 'Paul J. Meyer' },
+  { text: 'Perfection is the enemy of progress.', author: 'Winston Churchill' },
+  { text: 'Take the first step in faith. You don\u2019t have to see the whole staircase.', author: 'Martin Luther King Jr.' }
+]
+
+const dailyQuote = computed(() => {
+  const epochDay = Math.floor(Date.now() / 86400000)
+  return QUOTES[epochDay % QUOTES.length]
+})
+
+// --- Name edit ---
+function openNameEdit() {
+  nameDraft.value = userName.value
+  showNameEdit.value = true
+}
+function saveName() {
+  const trimmed = (nameDraft.value || '').trim().slice(0, 40)
+  if (trimmed) {
+    userName.value = trimmed
+    try { localStorage.setItem('tm_user_name', trimmed) } catch (_) {}
+  }
+  showNameEdit.value = false
+}
 const notifySettings = ref({
   email: localStorage.getItem('notify_email') || '',
   phone: localStorage.getItem('notify_phone') || '',
@@ -390,6 +554,7 @@ function statusLabel(s) {
 onMounted(() => {
   const hasCache = tasks.value.length > 0
   Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+  loadWeather()
 })
 </script>
 
@@ -484,6 +649,31 @@ onMounted(() => {
     </div>
   </div>
 
+  <!-- Name Edit Modal -->
+  <div v-if="showNameEdit" class="modal-overlay" @click.self="showNameEdit = false">
+    <div class="modal-card name-modal-card">
+      <div class="modal-icon">
+        <span class="material-symbols-rounded">waving_hand</span>
+      </div>
+      <h3>What should we call you?</h3>
+      <p>This only lives on your device.</p>
+      <input
+        v-model="nameDraft"
+        type="text"
+        maxlength="40"
+        placeholder="Your name"
+        @keyup.enter="saveName"
+      />
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="showNameEdit = false">Cancel</button>
+        <button class="btn-submit" @click="saveName">
+          <span class="material-symbols-rounded" style="font-size:18px">save</span>
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="app-header">
     <div class="header-content">
@@ -497,17 +687,50 @@ onMounted(() => {
             <p class="header-date">{{ todayFormatted }}</p>
           </div>
         </div>
-        <button class="btn-notify-settings" @click="showNotifySettings = true" title="Notification Settings">
-          <span class="material-symbols-rounded">notifications</span>
-        </button>
+        <div class="header-tools">
+          <div
+            v-if="weather"
+            class="weather-widget"
+            :title="`${weather.city ? weather.city + ' \u00B7 ' : ''}${weatherVisual(weather.code).label}`"
+          >
+            <div class="weather-icon-wrap" :class="weatherVisual(weather.code).class">
+              <span class="material-symbols-rounded">{{ weatherVisual(weather.code).icon }}</span>
+            </div>
+            <div class="weather-info">
+              <span class="weather-temp">{{ weather.temp }}°{{ weather.unit }}</span>
+              <span v-if="weather.city" class="weather-loc">{{ weather.city }}</span>
+              <span v-else class="weather-loc">{{ weatherVisual(weather.code).label }}</span>
+            </div>
+          </div>
+          <div v-else-if="!weatherError" class="weather-widget loading">
+            <div class="weather-icon-wrap">
+              <span class="material-symbols-rounded">cloud</span>
+            </div>
+            <span class="weather-loc">Locating…</span>
+          </div>
+          <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? 'Switch to light' : 'Switch to dark'">
+            <span v-if="theme === 'dark'" class="material-symbols-rounded theme-sun">light_mode</span>
+            <span v-else class="material-symbols-rounded theme-moon">dark_mode</span>
+          </button>
+          <button class="btn-notify-settings" @click="showNotifySettings = true" title="Notification Settings">
+            <span class="material-symbols-rounded">notifications</span>
+          </button>
+        </div>
       </div>
       <div class="header-greeting">
-        <h2>{{ greeting }}!</h2>
-        <p v-if="stats.total > 0">
+        <h2>
+          {{ greeting }},
+          <span class="greeting-name name-edit" @click="openNameEdit" title="Click to change">{{ userName }}</span>!
+        </h2>
+        <p class="status-line" v-if="stats.total > 0">
           You have <strong>{{ stats.todo + stats.inProgress }}</strong> active {{ (stats.todo + stats.inProgress) === 1 ? 'task' : 'tasks' }}
           <span v-if="stats.overdue > 0" class="header-overdue">&middot; {{ stats.overdue }} overdue</span>
         </p>
-        <p v-else>No tasks yet. Create one to get started!</p>
+        <p class="status-line" v-else>No tasks yet. Create one to get started!</p>
+        <blockquote class="daily-quote">
+          {{ dailyQuote.text }}
+          <span class="quote-author">— {{ dailyQuote.author }}</span>
+        </blockquote>
       </div>
       <div v-if="stats.total > 0" class="header-progress">
         <div class="progress-info">
