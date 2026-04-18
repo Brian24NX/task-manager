@@ -99,7 +99,12 @@ const filteredAndSorted = computed(() => {
   return list
 })
 
-const activeTasks = computed(() => filteredAndSorted.value.filter(t => t.status !== 'DONE'))
+const overdueTasks = computed(() =>
+  filteredAndSorted.value.filter(t => t.status !== 'DONE' && t.dueDate < today)
+)
+const activeTasks = computed(() =>
+  filteredAndSorted.value.filter(t => t.status !== 'DONE' && t.dueDate >= today)
+)
 const doneTasks = computed(() => {
   const done = filteredAndSorted.value.filter(t => t.status === 'DONE')
   done.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''))
@@ -562,6 +567,71 @@ onMounted(() => {
       <div class="spinner"></div>
       <p>Loading tasks...</p>
     </div>
+
+    <!-- Overdue Section -->
+    <section v-if="!loading && overdueTasks.length > 0" class="overdue-section">
+      <div class="overdue-header">
+        <span class="material-symbols-rounded overdue-icon">warning</span>
+        <span>Overdue</span>
+        <span class="overdue-count">{{ overdueTasks.length }}</span>
+      </div>
+      <TransitionGroup name="task" tag="div" class="task-list overdue-list">
+        <article
+          v-for="task in overdueTasks"
+          :key="task.id"
+          class="task-card overdue"
+          :class="`priority-${task.priority || 'MEDIUM'}`"
+        >
+          <div class="task-card-header">
+            <div class="task-title">{{ task.title }}</div>
+            <span class="badge" :class="task.status.toLowerCase()">
+              {{ statusLabel(task.status) }}
+            </span>
+          </div>
+
+          <div v-if="task.description" class="task-description">
+            {{ task.description }}
+          </div>
+
+          <div class="task-footer">
+            <div class="task-meta">
+              <span class="task-due due-overdue">
+                <span class="material-symbols-rounded">calendar_today</span>
+                {{ dueLabel(task) }}
+              </span>
+              <span class="priority-label">
+                <span class="priority-dot" :class="task.priority || 'MEDIUM'"></span>
+                {{ priorityLabel(task.priority) }}
+              </span>
+            </div>
+
+            <div class="task-actions">
+              <button class="icon-btn edit" title="Edit" @click="startEdit(task)">
+                <span class="material-symbols-rounded">edit</span>
+              </button>
+              <button
+                class="icon-btn done-btn"
+                title="Mark done"
+                @click="quickStatus(task, 'DONE')"
+              >
+                <span class="material-symbols-rounded">check_circle</span>
+              </button>
+              <button
+                v-if="task.status === 'TODO'"
+                class="icon-btn progress-btn"
+                title="Move to in progress"
+                @click="quickStatus(task, 'IN_PROGRESS')"
+              >
+                <span class="material-symbols-rounded">play_circle</span>
+              </button>
+              <button class="icon-btn delete" title="Delete" @click="confirmDelete(task)">
+                <span class="material-symbols-rounded">delete</span>
+              </button>
+            </div>
+          </div>
+        </article>
+      </TransitionGroup>
+    </section>
 
     <!-- Active Tasks -->
     <TransitionGroup v-if="!loading" name="task" tag="div" class="task-list">

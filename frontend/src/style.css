@@ -367,6 +367,39 @@ body {
   gap: 0.75rem;
 }
 
+/* ===== Overdue Section ===== */
+.overdue-section {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-lg, 12px);
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.overdue-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #b91c1c;
+}
+.overdue-header .overdue-icon {
+  font-size: 20px;
+}
+.overdue-count {
+  margin-left: auto;
+  background: #dc2626;
+  color: #fff;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.overdue-list {
+  gap: 0.6rem;
+}
+
 /* ===== Completed Section ===== */
 .completed-section {
   margin-top: 1.5rem;
