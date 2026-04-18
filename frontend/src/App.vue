@@ -38,9 +38,7 @@ const taskToDelete = ref(null)
 const toasts = ref([])
 const stats = ref(loadCachedStats())
 const showNotifySettings = ref(false)
-const showNameEdit = ref(false)
-const userName = ref(localStorage.getItem('tm_user_name') || 'Brian')
-const nameDraft = ref(userName.value)
+const userName = 'Brian'
 
 // --- Theme ---
 const theme = ref(resolveInitialTheme())
@@ -189,19 +187,54 @@ const dailyQuote = computed(() => {
   return QUOTES[epochDay % QUOTES.length]
 })
 
-// --- Name edit ---
-function openNameEdit() {
-  nameDraft.value = userName.value
-  showNameEdit.value = true
+// --- Weather mood (drives animated background scene) ---
+const weatherMood = computed(() => {
+  if (!weather.value) return isNight.value ? 'clear-night' : 'default'
+  const c = weather.value.code
+  if (c === 0) return isNight.value ? 'clear-night' : 'sunny'
+  if (c === 1 || c === 2) return isNight.value ? 'clear-night' : 'partly-cloudy'
+  if (c === 3) return 'cloudy'
+  if (c === 45 || c === 48) return 'foggy'
+  if (c >= 95) return 'stormy'
+  if ((c >= 71 && c <= 77) || c === 85 || c === 86) return 'snowy'
+  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return 'rainy'
+  return isNight.value ? 'clear-night' : 'default'
+})
+
+function seededRand(seed) {
+  const x = Math.sin(seed * 9301 + 49297) * 233280
+  return x - Math.floor(x)
 }
-function saveName() {
-  const trimmed = (nameDraft.value || '').trim().slice(0, 40)
-  if (trimmed) {
-    userName.value = trimmed
-    try { localStorage.setItem('tm_user_name', trimmed) } catch (_) {}
-  }
-  showNameEdit.value = false
-}
+
+const raindrops = computed(() => Array.from({ length: 36 }, (_, i) => ({
+  left: (seededRand(i + 1) * 100).toFixed(1) + '%',
+  delay: (seededRand(i + 11) * -1.4).toFixed(2) + 's',
+  duration: (0.55 + seededRand(i + 21) * 0.55).toFixed(2) + 's',
+  length: (14 + seededRand(i + 31) * 14).toFixed(0) + 'px'
+})))
+
+const snowflakes = computed(() => Array.from({ length: 32 }, (_, i) => ({
+  left: (seededRand(i + 2) * 100).toFixed(1) + '%',
+  delay: (seededRand(i + 12) * -12).toFixed(2) + 's',
+  duration: (7 + seededRand(i + 22) * 6).toFixed(2) + 's',
+  size: (4 + seededRand(i + 32) * 6).toFixed(1) + 'px',
+  drift: (seededRand(i + 42) * 40 - 20).toFixed(1) + 'px'
+})))
+
+const stars = computed(() => Array.from({ length: 48 }, (_, i) => ({
+  left: (seededRand(i + 3) * 100).toFixed(1) + '%',
+  top: (seededRand(i + 13) * 55).toFixed(1) + '%',
+  delay: (seededRand(i + 23) * -4).toFixed(2) + 's',
+  size: (1 + seededRand(i + 33) * 2).toFixed(1) + 'px',
+  duration: (2 + seededRand(i + 43) * 3).toFixed(2) + 's'
+})))
+
+const driftingClouds = computed(() => Array.from({ length: 4 }, (_, i) => ({
+  top: (8 + seededRand(i + 4) * 35).toFixed(1) + '%',
+  delay: (seededRand(i + 14) * -40).toFixed(2) + 's',
+  duration: (45 + seededRand(i + 24) * 30).toFixed(2) + 's',
+  scale: (0.7 + seededRand(i + 34) * 0.7).toFixed(2)
+})))
 const notifySettings = ref({
   email: localStorage.getItem('notify_email') || '',
   phone: localStorage.getItem('notify_phone') || '',
@@ -217,12 +250,18 @@ let searchTimeout = null
 
 const today = new Date().toISOString().slice(0, 10)
 
+const currentHour = ref(new Date().getHours())
+
 const greeting = computed(() => {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
+  const h = currentHour.value
+  if (h >= 5 && h < 12) return { prefix: 'Good morning', suffix: '' }
+  if (h >= 12 && h < 17) return { prefix: 'Good afternoon', suffix: '' }
+  if (h >= 17 && h < 21) return { prefix: 'Good evening', suffix: '' }
+  if (h >= 21 && h < 24) return { prefix: 'Winding down', suffix: 'Rest well tonight.' }
+  return { prefix: 'Still up', suffix: 'It\u2019s late — get some sleep soon.' }
 })
+
+const isNight = computed(() => currentHour.value >= 21 || currentHour.value < 6)
 
 const todayFormatted = computed(() => {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -555,14 +594,156 @@ onMounted(() => {
   const hasCache = tasks.value.length > 0
   Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
   loadWeather()
+  setInterval(() => { currentHour.value = new Date().getHours() }, 60 * 1000)
 })
 </script>
 
 <template>
-  <!-- Aurora background orbs -->
-  <div class="aurora-orb a"></div>
-  <div class="aurora-orb b"></div>
-  <div class="aurora-orb c"></div>
+  <!-- Background scene (nature + weather-reactive) -->
+  <div class="nature-scene" :data-mood="weatherMood">
+    <!-- Aurora orbs kept for dark theme ambience -->
+    <div class="aurora-orb a"></div>
+    <div class="aurora-orb b"></div>
+    <div class="aurora-orb c"></div>
+
+    <!-- Sunny: glowing sun with rotating rays -->
+    <div v-if="weatherMood === 'sunny' || weatherMood === 'partly-cloudy'" class="scene-sun">
+      <div class="sun-rays"></div>
+      <div class="sun-core"></div>
+    </div>
+
+    <!-- Clouds: cloudy, partly-cloudy, stormy -->
+    <div v-if="['cloudy','partly-cloudy','stormy','foggy'].includes(weatherMood)" class="scene-clouds">
+      <svg
+        v-for="(c, i) in driftingClouds"
+        :key="'c' + i"
+        class="drift-cloud"
+        :style="{ top: c.top, animationDelay: c.delay, animationDuration: c.duration, transform: `scale(${c.scale})` }"
+        viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d="M20,40 Q10,40 10,30 Q10,20 22,22 Q24,10 38,12 Q46,4 60,10 Q74,4 82,16 Q98,16 98,28 Q110,30 108,40 Z"
+          fill="currentColor" opacity="0.85"/>
+      </svg>
+    </div>
+
+    <!-- Rain -->
+    <div v-if="weatherMood === 'rainy' || weatherMood === 'stormy'" class="scene-rain">
+      <span
+        v-for="(d, i) in raindrops"
+        :key="'r' + i"
+        class="raindrop"
+        :style="{ left: d.left, animationDelay: d.delay, animationDuration: d.duration, height: d.length }"
+      ></span>
+    </div>
+
+    <!-- Storm lightning flash -->
+    <div v-if="weatherMood === 'stormy'" class="lightning-flash"></div>
+
+    <!-- Snow -->
+    <div v-if="weatherMood === 'snowy'" class="scene-snow">
+      <span
+        v-for="(s, i) in snowflakes"
+        :key="'s' + i"
+        class="snowflake"
+        :style="{ left: s.left, animationDelay: s.delay, animationDuration: s.duration, width: s.size, height: s.size, '--drift': s.drift }"
+      ></span>
+    </div>
+
+    <!-- Fog -->
+    <div v-if="weatherMood === 'foggy'" class="scene-fog"></div>
+
+    <!-- Clear night: moon + stars -->
+    <div v-if="weatherMood === 'clear-night'" class="scene-night">
+      <div class="moon">
+        <div class="moon-glow"></div>
+      </div>
+      <span
+        v-for="(st, i) in stars"
+        :key="'st' + i"
+        class="star"
+        :style="{ left: st.left, top: st.top, width: st.size, height: st.size, animationDelay: st.delay, animationDuration: st.duration }"
+      ></span>
+    </div>
+
+    <!-- Grass + flowers base (bottom of viewport) -->
+    <svg class="grass-field" viewBox="0 0 1440 180" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="grass-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#86efac" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#16a34a" stop-opacity="0.9"/>
+        </linearGradient>
+      </defs>
+      <!-- Back hills -->
+      <path d="M0,140 Q180,90 360,120 T720,110 T1080,125 T1440,100 L1440,180 L0,180 Z"
+        fill="#22c55e" fill-opacity="0.35"/>
+      <!-- Front grass ridge -->
+      <path d="M0,160 Q120,130 260,150 T520,140 T800,150 T1080,135 T1440,150 L1440,180 L0,180 Z"
+        fill="url(#grass-grad)"/>
+      <!-- Grass blades -->
+      <g stroke="#15803d" stroke-width="1.5" stroke-linecap="round" opacity="0.55">
+        <path d="M60,160 Q58,145 55,135"/><path d="M66,162 Q68,150 72,142"/>
+        <path d="M180,158 Q176,144 172,132"/><path d="M188,160 Q192,148 196,138"/>
+        <path d="M310,156 Q306,140 302,128"/><path d="M320,158 Q324,148 330,138"/>
+        <path d="M460,158 Q456,144 452,132"/><path d="M470,160 Q474,150 478,140"/>
+        <path d="M620,156 Q616,142 612,130"/><path d="M630,158 Q634,146 640,136"/>
+        <path d="M770,158 Q766,144 762,132"/><path d="M780,160 Q784,150 788,140"/>
+        <path d="M920,156 Q916,142 912,130"/><path d="M930,158 Q934,146 940,136"/>
+        <path d="M1080,158 Q1076,144 1072,132"/><path d="M1090,160 Q1094,148 1098,138"/>
+        <path d="M1240,156 Q1236,142 1232,130"/><path d="M1250,158 Q1254,146 1260,136"/>
+        <path d="M1380,158 Q1376,144 1372,132"/><path d="M1390,160 Q1394,150 1398,140"/>
+      </g>
+      <!-- Flowers -->
+      <g>
+        <g transform="translate(140,146)">
+          <circle r="3.4" fill="#fbbf24"/>
+          <circle cx="-4" cy="-1" r="2.2" fill="#ec4899"/>
+          <circle cx="4" cy="-1" r="2.2" fill="#ec4899"/>
+          <circle cx="-2" cy="3" r="2.2" fill="#ec4899"/>
+          <circle cx="2" cy="3" r="2.2" fill="#ec4899"/>
+        </g>
+        <g transform="translate(400,150)">
+          <circle r="3" fill="#fde047"/>
+          <circle cx="-3.5" cy="0" r="2" fill="#fff"/>
+          <circle cx="3.5" cy="0" r="2" fill="#fff"/>
+          <circle cx="0" cy="-3.5" r="2" fill="#fff"/>
+          <circle cx="0" cy="3.5" r="2" fill="#fff"/>
+        </g>
+        <g transform="translate(680,148)">
+          <circle r="3.2" fill="#f97316"/>
+          <circle cx="-4" cy="-1" r="2.2" fill="#a78bfa"/>
+          <circle cx="4" cy="-1" r="2.2" fill="#a78bfa"/>
+          <circle cx="-2" cy="3" r="2.2" fill="#a78bfa"/>
+          <circle cx="2" cy="3" r="2.2" fill="#a78bfa"/>
+        </g>
+        <g transform="translate(1000,150)">
+          <circle r="3" fill="#fde047"/>
+          <circle cx="-3.5" cy="0" r="2" fill="#fff"/>
+          <circle cx="3.5" cy="0" r="2" fill="#fff"/>
+          <circle cx="0" cy="-3.5" r="2" fill="#fff"/>
+          <circle cx="0" cy="3.5" r="2" fill="#fff"/>
+        </g>
+        <g transform="translate(1260,146)">
+          <circle r="3.4" fill="#fbbf24"/>
+          <circle cx="-4" cy="-1" r="2.2" fill="#ec4899"/>
+          <circle cx="4" cy="-1" r="2.2" fill="#ec4899"/>
+          <circle cx="-2" cy="3" r="2.2" fill="#ec4899"/>
+          <circle cx="2" cy="3" r="2.2" fill="#ec4899"/>
+        </g>
+      </g>
+      <!-- Tree silhouette -->
+      <g transform="translate(1150,90)" opacity="0.75">
+        <rect x="-4" y="40" width="8" height="28" fill="#7c2d12"/>
+        <ellipse cx="0" cy="32" rx="34" ry="38" fill="#166534"/>
+        <ellipse cx="-18" cy="22" rx="22" ry="22" fill="#22c55e" opacity="0.85"/>
+        <ellipse cx="18" cy="22" rx="22" ry="22" fill="#16a34a" opacity="0.9"/>
+      </g>
+      <g transform="translate(230,100)" opacity="0.7">
+        <rect x="-3" y="34" width="6" height="24" fill="#78350f"/>
+        <polygon points="0,-18 -22,28 22,28" fill="#166534"/>
+        <polygon points="0,-4 -18,32 18,32" fill="#22c55e" opacity="0.85"/>
+      </g>
+    </svg>
+  </div>
 
   <!-- Toasts -->
   <div class="toast-container">
@@ -649,31 +830,6 @@ onMounted(() => {
     </div>
   </div>
 
-  <!-- Name Edit Modal -->
-  <div v-if="showNameEdit" class="modal-overlay" @click.self="showNameEdit = false">
-    <div class="modal-card name-modal-card">
-      <div class="modal-icon">
-        <span class="material-symbols-rounded">waving_hand</span>
-      </div>
-      <h3>What should we call you?</h3>
-      <p>This only lives on your device.</p>
-      <input
-        v-model="nameDraft"
-        type="text"
-        maxlength="40"
-        placeholder="Your name"
-        @keyup.enter="saveName"
-      />
-      <div class="modal-actions">
-        <button class="btn-cancel" @click="showNameEdit = false">Cancel</button>
-        <button class="btn-submit" @click="saveName">
-          <span class="material-symbols-rounded" style="font-size:18px">save</span>
-          Save
-        </button>
-      </div>
-    </div>
-  </div>
-
   <!-- Header -->
   <header class="app-header">
     <div class="header-content">
@@ -719,10 +875,10 @@ onMounted(() => {
       </div>
       <div class="header-greeting">
         <h2>
-          {{ greeting }},
-          <span class="greeting-name name-edit" @click="openNameEdit" title="Click to change">{{ userName }}</span>!
+          {{ greeting.prefix }}, <span class="greeting-name">{{ userName }}</span>!
         </h2>
-        <p class="status-line" v-if="stats.total > 0">
+        <p class="status-line" v-if="greeting.suffix">{{ greeting.suffix }}</p>
+        <p class="status-line" v-else-if="stats.total > 0">
           You have <strong>{{ stats.todo + stats.inProgress }}</strong> active {{ (stats.todo + stats.inProgress) === 1 ? 'task' : 'tasks' }}
           <span v-if="stats.overdue > 0" class="header-overdue">&middot; {{ stats.overdue }} overdue</span>
         </p>
