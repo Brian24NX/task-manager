@@ -4,8 +4,30 @@ import TaskForm from './components/TaskForm.vue'
 
 const API = (import.meta.env.VITE_API_URL || '') + '/api/tasks'
 
-const tasks = ref([])
+const CACHE_KEY = 'tm_tasks_cache_v1'
+const STATS_CACHE_KEY = 'tm_stats_cache_v1'
+
+function loadCachedTasks() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch (_) {
+    return []
+  }
+}
+
+function loadCachedStats() {
+  try {
+    const raw = localStorage.getItem(STATS_CACHE_KEY)
+    return raw ? JSON.parse(raw) : { total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 }
+  } catch (_) {
+    return { total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 }
+  }
+}
+
+const tasks = ref(loadCachedTasks())
 const loading = ref(false)
+const showCompleted = ref(false)
 const filterDate = ref('')
 const filterStatus = ref('')
 const searchQuery = ref('')
@@ -14,7 +36,7 @@ const showForm = ref(false)
 const showDeleteConfirm = ref(false)
 const taskToDelete = ref(null)
 const toasts = ref([])
-const stats = ref({ total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 })
+const stats = ref(loadCachedStats())
 const showNotifySettings = ref(false)
 const notifySettings = ref({
   email: localStorage.getItem('notify_email') || '',
@@ -77,6 +99,13 @@ const filteredAndSorted = computed(() => {
   return list
 })
 
+const activeTasks = computed(() => filteredAndSorted.value.filter(t => t.status !== 'DONE'))
+const doneTasks = computed(() => {
+  const done = filteredAndSorted.value.filter(t => t.status === 'DONE')
+  done.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''))
+  return done
+})
+
 // --- Toasts ---
 let toastId = 0
 function addToast(message, type = 'success') {
@@ -102,17 +131,20 @@ function toastIcon(type) {
 }
 
 // --- API ---
-async function fetchTasks() {
-  loading.value = true
+async function fetchTasks({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const query = filterDate.value ? `?dueDate=${filterDate.value}` : ''
     const res = await fetch(`${API}${query}`)
     if (!res.ok) throw new Error('Could not load tasks')
     tasks.value = await res.json()
+    if (!filterDate.value) {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks.value)) } catch (_) {}
+    }
   } catch (err) {
-    addToast(err.message, 'error')
+    if (!silent) addToast(err.message, 'error')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -136,7 +168,10 @@ async function searchTasks(q) {
 async function refreshStats() {
   try {
     const res = await fetch(`${API}/stats`)
-    if (res.ok) stats.value = await res.json()
+    if (res.ok) {
+      stats.value = await res.json()
+      try { localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(stats.value)) } catch (_) {}
+    }
   } catch (_) {
     // silently fail
   }
@@ -314,8 +349,8 @@ function statusLabel(s) {
 }
 
 onMounted(() => {
-  fetchTasks()
-  refreshStats()
+  const hasCache = tasks.value.length > 0
+  Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
 })
 </script>
 
@@ -528,10 +563,10 @@ onMounted(() => {
       <p>Loading tasks...</p>
     </div>
 
-    <!-- Task List -->
+    <!-- Active Tasks -->
     <TransitionGroup v-if="!loading" name="task" tag="div" class="task-list">
       <article
-        v-for="task in filteredAndSorted"
+        v-for="task in activeTasks"
         :key="task.id"
         class="task-card"
         :class="[
@@ -567,7 +602,6 @@ onMounted(() => {
               <span class="material-symbols-rounded">edit</span>
             </button>
             <button
-              v-if="task.status !== 'DONE'"
               class="icon-btn done-btn"
               title="Mark done"
               @click="quickStatus(task, 'DONE')"
@@ -589,6 +623,63 @@ onMounted(() => {
         </div>
       </article>
     </TransitionGroup>
+
+    <!-- Completed Section -->
+    <section v-if="!loading && doneTasks.length > 0" class="completed-section">
+      <button class="completed-toggle" @click="showCompleted = !showCompleted">
+        <span class="material-symbols-rounded toggle-chevron" :class="{ open: showCompleted }">chevron_right</span>
+        <span class="material-symbols-rounded completed-icon">check_circle</span>
+        <span>Completed</span>
+        <span class="completed-count">{{ doneTasks.length }}</span>
+      </button>
+
+      <TransitionGroup v-if="showCompleted" name="task" tag="div" class="task-list completed-list">
+        <article
+          v-for="task in doneTasks"
+          :key="task.id"
+          class="task-card done-card"
+          :class="`priority-${task.priority || 'MEDIUM'}`"
+        >
+          <div class="task-card-header">
+            <div class="task-title">{{ task.title }}</div>
+            <span class="badge done">{{ statusLabel(task.status) }}</span>
+          </div>
+
+          <div v-if="task.description" class="task-description">
+            {{ task.description }}
+          </div>
+
+          <div class="task-footer">
+            <div class="task-meta">
+              <span class="task-due">
+                <span class="material-symbols-rounded">calendar_today</span>
+                {{ task.dueDate }}
+              </span>
+              <span class="priority-label">
+                <span class="priority-dot" :class="task.priority || 'MEDIUM'"></span>
+                {{ priorityLabel(task.priority) }}
+              </span>
+            </div>
+
+            <div class="task-actions">
+              <button class="icon-btn edit" title="Edit" @click="startEdit(task)">
+                <span class="material-symbols-rounded">edit</span>
+              </button>
+              <button
+                class="icon-btn progress-btn"
+                title="Reopen"
+                @click="quickStatus(task, 'TODO')"
+              >
+                <span class="material-symbols-rounded">undo</span>
+              </button>
+              <button class="icon-btn delete" title="Delete" @click="confirmDelete(task)">
+                <span class="material-symbols-rounded">delete</span>
+              </button>
+            </div>
+          </div>
+        </article>
+      </TransitionGroup>
+    </section>
 
     <!-- Empty States -->
     <div

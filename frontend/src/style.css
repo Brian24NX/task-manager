@@ -366,6 +366,61 @@ body {
   flex-direction: column;
   gap: 0.75rem;
 }
+
+/* ===== Completed Section ===== */
+.completed-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed var(--gray-200);
+}
+.completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--gray-700, #374151);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.completed-toggle:hover {
+  background: var(--gray-100, #f3f4f6);
+}
+.completed-toggle .toggle-chevron {
+  transition: transform 0.2s ease;
+  font-size: 20px;
+}
+.completed-toggle .toggle-chevron.open {
+  transform: rotate(90deg);
+}
+.completed-toggle .completed-icon {
+  font-size: 18px;
+  color: var(--priority-low, #10b981);
+}
+.completed-count {
+  margin-left: auto;
+  background: var(--gray-200, #e5e7eb);
+  color: var(--gray-700, #374151);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.completed-list {
+  margin-top: 0.75rem;
+}
+.done-card {
+  opacity: 0.75;
+}
+.done-card .task-title {
+  text-decoration: line-through;
+  color: var(--gray-500, #6b7280);
+}
 .task-card {
   background: #fff;
   border-radius: var(--radius-lg);
