@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import TaskForm from './components/TaskForm.vue'
 
 const API = (import.meta.env.VITE_API_URL || '') + '/api/tasks'
@@ -28,7 +28,6 @@ function loadCachedStats() {
 const tasks = ref(loadCachedTasks())
 const loading = ref(false)
 const showCompleted = ref(false)
-const filterDate = ref('')
 const filterStatus = ref('')
 const searchQuery = ref('')
 const editingTask = ref(null)
@@ -373,13 +372,10 @@ function toastIcon(type) {
 async function fetchTasks({ silent = false } = {}) {
   if (!silent) loading.value = true
   try {
-    const query = filterDate.value ? `?dueDate=${filterDate.value}` : ''
-    const res = await fetch(`${API}${query}`)
+    const res = await fetch(API)
     if (!res.ok) throw new Error('Could not load tasks')
     tasks.value = await res.json()
-    if (!filterDate.value) {
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks.value)) } catch (_) {}
-    }
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks.value)) } catch (_) {}
   } catch (err) {
     if (!silent) addToast(err.message, 'error')
   } finally {
@@ -533,14 +529,32 @@ function cancelDelete() {
 }
 
 // --- Form ---
+function scrollToForm() {
+  nextTick(() => {
+    const el = document.querySelector('.form-overlay')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
 function startCreate() {
   editingTask.value = null
   showForm.value = true
+  scrollToForm()
 }
 
 function startEdit(task) {
   editingTask.value = { ...task }
   showForm.value = true
+  scrollToForm()
+}
+
+// --- Stat filter clicks ---
+function setStatFilter(status) {
+  filterStatus.value = filterStatus.value === status ? '' : status
+  if (filterStatus.value === 'DONE') showCompleted.value = true
+  nextTick(() => {
+    const el = document.querySelector('.task-list, .overdue-section, .completed-section, .empty-state')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function cancelForm() {
@@ -556,12 +570,6 @@ watch(searchQuery, (val) => {
   }, 300)
 })
 
-// --- Date filter ---
-watch(filterDate, () => {
-  if (!searchQuery.value) {
-    fetchTasks()
-  }
-})
 
 // --- Helpers ---
 function isOverdue(task) {
@@ -844,6 +852,23 @@ onMounted(() => {
           </div>
         </div>
         <div class="header-tools">
+          <div class="header-search">
+            <span class="material-symbols-rounded">search</span>
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="header-search-input"
+              placeholder="Search tasks…"
+            />
+            <button
+              v-if="searchQuery"
+              class="header-search-clear"
+              @click="searchQuery = ''"
+              title="Clear search"
+            >
+              <span class="material-symbols-rounded">close</span>
+            </button>
+          </div>
           <div
             v-if="weather"
             class="weather-widget"
@@ -902,9 +927,14 @@ onMounted(() => {
 
   <!-- Main Content -->
   <main class="container">
-    <!-- Stats -->
+    <!-- Stats (clickable filters) -->
     <div class="stats-grid">
-      <div class="stat-card">
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ active: filterStatus === '' }"
+        @click="setStatFilter('')"
+      >
         <div class="stat-icon total">
           <span class="material-symbols-rounded">inventory_2</span>
         </div>
@@ -912,8 +942,13 @@ onMounted(() => {
           <div class="stat-count">{{ stats.total }}</div>
           <div class="stat-label">Total</div>
         </div>
-      </div>
-      <div class="stat-card">
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ active: filterStatus === 'TODO' }"
+        @click="setStatFilter('TODO')"
+      >
         <div class="stat-icon todo">
           <span class="material-symbols-rounded">radio_button_unchecked</span>
         </div>
@@ -921,8 +956,13 @@ onMounted(() => {
           <div class="stat-count">{{ stats.todo }}</div>
           <div class="stat-label">To Do</div>
         </div>
-      </div>
-      <div class="stat-card">
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ active: filterStatus === 'IN_PROGRESS' }"
+        @click="setStatFilter('IN_PROGRESS')"
+      >
         <div class="stat-icon progress">
           <span class="material-symbols-rounded">pending</span>
         </div>
@@ -930,8 +970,13 @@ onMounted(() => {
           <div class="stat-count">{{ stats.inProgress }}</div>
           <div class="stat-label">In Progress</div>
         </div>
-      </div>
-      <div class="stat-card">
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ active: filterStatus === 'DONE' }"
+        @click="setStatFilter('DONE')"
+      >
         <div class="stat-icon done">
           <span class="material-symbols-rounded">check_circle</span>
         </div>
@@ -940,32 +985,19 @@ onMounted(() => {
           <div class="stat-label">Done</div>
           <div v-if="stats.overdue > 0" class="overdue-count">{{ stats.overdue }} overdue</div>
         </div>
-      </div>
+      </button>
     </div>
 
-    <!-- Controls -->
+    <!-- Action bar -->
     <div class="controls-bar">
-      <div class="search-wrapper">
-        <span class="material-symbols-rounded">search</span>
-        <input
-          v-model="searchQuery"
-          type="text"
-          class="search-input"
-          placeholder="Search tasks..."
-        />
+      <div v-if="filterStatus" class="filter-pill">
+        <span class="material-symbols-rounded">filter_alt</span>
+        <span>Showing {{ statusLabel(filterStatus) }}</span>
+        <button class="filter-pill-clear" @click="setStatFilter('')" title="Clear filter">
+          <span class="material-symbols-rounded">close</span>
+        </button>
       </div>
-      <input
-        v-model="filterDate"
-        type="date"
-        class="filter-input"
-      />
-      <select v-model="filterStatus" class="filter-select">
-        <option value="">All Statuses</option>
-        <option value="TODO">To Do</option>
-        <option value="IN_PROGRESS">In Progress</option>
-        <option value="DONE">Done</option>
-      </select>
-      <button class="btn-primary" @click="startCreate">
+      <button class="btn-primary new-task-btn" @click="startCreate">
         <span class="material-symbols-rounded">add</span>
         New Task
       </button>
@@ -1176,18 +1208,18 @@ onMounted(() => {
     >
       <div class="empty-state-icon">
         <span class="material-symbols-rounded">
-          {{ searchQuery || filterDate || filterStatus ? 'search_off' : 'add_task' }}
+          {{ searchQuery || filterStatus ? 'search_off' : 'add_task' }}
         </span>
       </div>
-      <h3 v-if="searchQuery || filterDate || filterStatus">No matching tasks</h3>
+      <h3 v-if="searchQuery || filterStatus">No matching tasks</h3>
       <h3 v-else>No tasks yet</h3>
-      <p v-if="searchQuery || filterDate || filterStatus">
+      <p v-if="searchQuery || filterStatus">
         Try adjusting your search or filters.
       </p>
       <p v-else>
         Click "New Task" to create your first task and get started.
       </p>
-      <button v-if="!(searchQuery || filterDate || filterStatus)" class="btn-primary empty-cta" @click="startCreate">
+      <button v-if="!(searchQuery || filterStatus)" class="btn-primary empty-cta" @click="startCreate">
         <span class="material-symbols-rounded">add</span>
         Create Your First Task
       </button>
