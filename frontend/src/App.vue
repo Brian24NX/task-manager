@@ -583,6 +583,8 @@ function cancelDelete() {
 }
 
 // --- Form ---
+let preFormScrollY = 0
+
 function scrollToForm() {
   nextTick(() => {
     const el = document.querySelector('.form-overlay')
@@ -590,12 +592,14 @@ function scrollToForm() {
   })
 }
 function startCreate() {
+  if (!showForm.value) preFormScrollY = window.scrollY
   editingTask.value = null
   showForm.value = true
   scrollToForm()
 }
 
 function startEdit(task) {
+  if (!showForm.value) preFormScrollY = window.scrollY
   editingTask.value = { ...task }
   showForm.value = true
   scrollToForm()
@@ -614,6 +618,9 @@ function setStatFilter(status) {
 function cancelForm() {
   editingTask.value = null
   showForm.value = false
+  nextTick(() => {
+    window.scrollTo({ top: preFormScrollY, behavior: 'smooth' })
+  })
 }
 
 // --- Search debounce ---
