@@ -440,6 +440,26 @@ async function refreshStats() {
   }
 }
 
+function computeStats(list) {
+  let todo = 0, inProgress = 0, done = 0, overdue = 0
+  for (const t of list) {
+    if (t.status === 'TODO') todo++
+    else if (t.status === 'IN_PROGRESS') inProgress++
+    else if (t.status === 'DONE') done++
+    if (t.status !== 'DONE' && t.dueDate && t.dueDate < today) overdue++
+  }
+  return { total: list.length, todo, inProgress, done, overdue }
+}
+
+function applyLocalTasks(nextTasks) {
+  tasks.value = nextTasks
+  stats.value = computeStats(nextTasks)
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(nextTasks))
+    localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(stats.value))
+  } catch (_) {}
+}
+
 function saveNotifySettings() {
   localStorage.setItem('notify_email', notifySettings.value.email)
   localStorage.setItem('notify_phone', notifySettings.value.phone)
@@ -496,12 +516,16 @@ async function saveTask(task) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data.message || 'Could not save task')
     }
+    const saved = await res.json()
+    const next = isEditing
+      ? tasks.value.map(t => t.id === saved.id ? saved : t)
+      : [saved, ...tasks.value]
+    applyLocalTasks(next)
     addToast(isEditing ? 'Task updated successfully' : 'Task created successfully')
     cancelForm()
-    await Promise.all([fetchTasks(), refreshStats()])
 
     if (!isEditing && (wantsEmail || wantsSms)) {
-      await sendNotification(taskData.title, 'CREATED', wantsEmail, wantsSms)
+      sendNotification(taskData.title, 'CREATED', wantsEmail, wantsSms)
     }
   } catch (err) {
     addToast(err.message, 'error')
@@ -515,12 +539,13 @@ async function quickStatus(task, status, event) {
     }
     const res = await authedFetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not update status')
+    const updated = await res.json()
+    applyLocalTasks(tasks.value.map(t => t.id === updated.id ? updated : t))
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
     addToast(`Task ${label}`)
-    await Promise.all([fetchTasks(), refreshStats()])
 
     if (status === 'DONE' && notifySettings.value.onComplete) {
-      await sendNotification(
+      sendNotification(
         task.title,
         'COMPLETED',
         notifySettings.value.onCompleteEmail,
@@ -540,12 +565,13 @@ function confirmDelete(task) {
 async function executeDelete() {
   if (!taskToDelete.value) return
   try {
-    const res = await authedFetch(`${API}/${taskToDelete.value.id}`, { method: 'DELETE' })
+    const id = taskToDelete.value.id
+    const res = await authedFetch(`${API}/${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Could not delete task')
+    applyLocalTasks(tasks.value.filter(t => t.id !== id))
     addToast('Task deleted successfully')
     showDeleteConfirm.value = false
     taskToDelete.value = null
-    await Promise.all([fetchTasks(), refreshStats()])
   } catch (err) {
     addToast(err.message, 'error')
   }
