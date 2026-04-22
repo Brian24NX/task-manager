@@ -626,6 +626,12 @@ function statusLabel(s) {
   return { TODO: 'To Do', IN_PROGRESS: 'In Progress', DONE: 'Done' }[s] || s
 }
 
+function checkSessionExpiry() {
+  if (authed.value && !isAuthed()) onUnauthorized()
+}
+
+let sessionCheckInterval = null
+
 onMounted(() => {
   if (authed.value) {
     const hasCache = tasks.value.length > 0
@@ -633,11 +639,15 @@ onMounted(() => {
   }
   loadWeather()
   setInterval(() => { currentHour.value = new Date().getHours() }, 60 * 1000)
+  sessionCheckInterval = setInterval(checkSessionExpiry, 30 * 1000)
   window.addEventListener('tm:unauthorized', onUnauthorized)
+  window.addEventListener('focus', checkSessionExpiry)
 })
 
 onUnmounted(() => {
+  if (sessionCheckInterval) clearInterval(sessionCheckInterval)
   window.removeEventListener('tm:unauthorized', onUnauthorized)
+  window.removeEventListener('focus', checkSessionExpiry)
 })
 </script>
 
