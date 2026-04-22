@@ -1,8 +1,33 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TaskForm from './components/TaskForm.vue'
+import LoginView from './components/LoginView.vue'
+import { authedFetch, clearAuth, isAuthed } from './auth.js'
 
 const API = (import.meta.env.VITE_API_URL || '') + '/api/tasks'
+
+const authed = ref(isAuthed())
+function onAuthSuccess() {
+  authed.value = true
+  const hasCache = tasks.value.length > 0
+  Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+}
+function logout() {
+  clearAuth()
+  authed.value = false
+  tasks.value = []
+  stats.value = { total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 }
+  try {
+    localStorage.removeItem(CACHE_KEY)
+    localStorage.removeItem(STATS_CACHE_KEY)
+  } catch (_) {}
+}
+function onUnauthorized() {
+  if (authed.value) {
+    authed.value = false
+    addToast('Session expired — please sign in again', 'warning')
+  }
+}
 
 const CACHE_KEY = 'tm_tasks_cache_v1'
 const STATS_CACHE_KEY = 'tm_stats_cache_v1'
@@ -370,9 +395,11 @@ function toastIcon(type) {
 
 // --- API ---
 async function fetchTasks({ silent = false } = {}) {
+  if (!authed.value) return
   if (!silent) loading.value = true
   try {
-    const res = await fetch(API)
+    const res = await authedFetch(API)
+    if (res.status === 401) return
     if (!res.ok) throw new Error('Could not load tasks')
     tasks.value = await res.json()
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks.value)) } catch (_) {}
@@ -390,7 +417,7 @@ async function searchTasks(q) {
   }
   loading.value = true
   try {
-    const res = await fetch(`${API}/search?q=${encodeURIComponent(q)}`)
+    const res = await authedFetch(`${API}/search?q=${encodeURIComponent(q)}`)
     if (!res.ok) throw new Error('Search failed')
     tasks.value = await res.json()
   } catch (err) {
@@ -401,8 +428,9 @@ async function searchTasks(q) {
 }
 
 async function refreshStats() {
+  if (!authed.value) return
   try {
-    const res = await fetch(`${API}/stats`)
+    const res = await authedFetch(`${API}/stats`)
     if (res.ok) {
       stats.value = await res.json()
       try { localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(stats.value)) } catch (_) {}
@@ -426,7 +454,7 @@ async function sendNotification(taskTitle, eventType, notifyEmail, notifySms) {
   if (!notifyEmail && !notifySms) return
   const NOTIFY_API = (import.meta.env.VITE_API_URL || '') + '/api/notifications/send'
   try {
-    const res = await fetch(NOTIFY_API, {
+    const res = await authedFetch(NOTIFY_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -459,7 +487,7 @@ async function saveTask(task) {
   const { notifyEmail, notifySms, ...taskData } = task
 
   try {
-    const res = await fetch(url, {
+    const res = await authedFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(taskData)
@@ -485,7 +513,7 @@ async function quickStatus(task, status, event) {
     if (status === 'DONE' && event?.currentTarget) {
       fireConfetti(event.currentTarget)
     }
-    const res = await fetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
+    const res = await authedFetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not update status')
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
     addToast(`Task ${label}`)
@@ -512,7 +540,7 @@ function confirmDelete(task) {
 async function executeDelete() {
   if (!taskToDelete.value) return
   try {
-    const res = await fetch(`${API}/${taskToDelete.value.id}`, { method: 'DELETE' })
+    const res = await authedFetch(`${API}/${taskToDelete.value.id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Could not delete task')
     addToast('Task deleted successfully')
     showDeleteConfirm.value = false
@@ -599,10 +627,17 @@ function statusLabel(s) {
 }
 
 onMounted(() => {
-  const hasCache = tasks.value.length > 0
-  Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+  if (authed.value) {
+    const hasCache = tasks.value.length > 0
+    Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+  }
   loadWeather()
   setInterval(() => { currentHour.value = new Date().getHours() }, 60 * 1000)
+  window.addEventListener('tm:unauthorized', onUnauthorized)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('tm:unauthorized', onUnauthorized)
 })
 </script>
 
@@ -753,6 +788,10 @@ onMounted(() => {
     </svg>
   </div>
 
+  <!-- Login gate -->
+  <LoginView v-if="!authed" @success="onAuthSuccess" />
+
+  <template v-else>
   <!-- Toasts -->
   <div class="toast-container">
     <div
@@ -895,6 +934,9 @@ onMounted(() => {
           </button>
           <button class="btn-notify-settings" @click="showNotifySettings = true" title="Notification Settings">
             <span class="material-symbols-rounded">notifications</span>
+          </button>
+          <button class="btn-notify-settings" @click="logout" title="Sign out">
+            <span class="material-symbols-rounded">logout</span>
           </button>
         </div>
       </div>
@@ -1229,4 +1271,5 @@ onMounted(() => {
   <footer class="app-footer">
     <p>Task Manager &middot; Stay organized, stay productive</p>
   </footer>
+  </template>
 </template>
