@@ -10,7 +10,7 @@ const authed = ref(isAuthed())
 function onAuthSuccess() {
   authed.value = true
   const hasCache = tasks.value.length > 0
-  Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+  Promise.all([fetchTasks({ silent: hasCache }), refreshStats(), loadReminderConfig()])
 }
 function logout() {
   clearAuth()
@@ -267,6 +267,63 @@ const notifySettings = ref({
   onCompleteSms: localStorage.getItem('notify_complete_sms') !== 'false'
 })
 
+const reminderConfig = ref({ enabled: false, email: '', phone: '' })
+const reminderLoading = ref(false)
+
+async function loadReminderConfig() {
+  if (!authed.value) return
+  try {
+    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config')
+    if (!res.ok) return
+    const data = await res.json()
+    reminderConfig.value = {
+      enabled: Boolean(data.enabled),
+      email: data.email || '',
+      phone: data.phone || ''
+    }
+  } catch (_) {}
+}
+
+async function saveReminderConfig() {
+  reminderLoading.value = true
+  try {
+    const body = {
+      enabled: reminderConfig.value.enabled,
+      email: notifySettings.value.email || null,
+      phone: notifySettings.value.phone || null
+    }
+    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) throw new Error('Could not save reminder settings')
+    const data = await res.json()
+    reminderConfig.value = {
+      enabled: Boolean(data.enabled),
+      email: data.email || '',
+      phone: data.phone || ''
+    }
+  } finally {
+    reminderLoading.value = false
+  }
+}
+
+async function testReminderNow() {
+  try {
+    await saveReminderConfig()
+    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/test', { method: 'POST' })
+    if (!res.ok) throw new Error('Test failed')
+    addToast('Test reminder triggered — check your inbox/phone', 'success')
+  } catch (err) {
+    addToast(err.message || 'Test failed', 'error')
+  }
+}
+
+watch(showNotifySettings, (open) => {
+  if (open) loadReminderConfig()
+})
+
 // Pending notification info (set during save, used after API returns)
 let pendingNotify = null
 
@@ -470,12 +527,17 @@ function applyLocalTasks(nextTasks) {
   } catch (_) {}
 }
 
-function saveNotifySettings() {
+async function saveNotifySettings() {
   localStorage.setItem('notify_email', notifySettings.value.email)
   localStorage.setItem('notify_phone', notifySettings.value.phone)
   localStorage.setItem('notify_on_complete', notifySettings.value.onComplete)
   localStorage.setItem('notify_complete_email', notifySettings.value.onCompleteEmail)
   localStorage.setItem('notify_complete_sms', notifySettings.value.onCompleteSms)
+  try {
+    await saveReminderConfig()
+  } catch (err) {
+    addToast('Reminder not saved: ' + err.message, 'warning')
+  }
   showNotifySettings.value = false
   addToast('Notification settings saved')
 }
@@ -792,7 +854,7 @@ watch([authed, () => stats.value.overdue, () => stats.value.todo, () => stats.va
 onMounted(() => {
   if (authed.value) {
     const hasCache = tasks.value.length > 0
-    Promise.all([fetchTasks({ silent: hasCache }), refreshStats()])
+    Promise.all([fetchTasks({ silent: hasCache }), refreshStats(), loadReminderConfig()])
   }
   loadWeather()
   setInterval(() => { currentHour.value = new Date().getHours() }, 60 * 1000)
@@ -1056,6 +1118,26 @@ onUnmounted(() => {
               <span class="material-symbols-rounded" style="font-size:14px">sms</span> via SMS
             </label>
           </div>
+        </div>
+
+        <div class="notify-completion-section">
+          <label class="notify-check">
+            <input type="checkbox" v-model="reminderConfig.enabled" />
+            Send me a daily summary of tasks due today
+          </label>
+          <p class="reminder-hint" v-if="reminderConfig.enabled">
+            Uses the email and/or phone above. Sent once a day at the server's configured reminder time.
+          </p>
+          <button
+            v-if="reminderConfig.enabled"
+            type="button"
+            class="btn-cancel reminder-test-btn"
+            :disabled="reminderLoading || (!notifySettings.email && !notifySettings.phone)"
+            @click="testReminderNow"
+          >
+            <span class="material-symbols-rounded" style="font-size:16px">send</span>
+            Send a test reminder now
+          </button>
         </div>
       </div>
 

@@ -2165,3 +2165,18 @@ body::before {
   color: #7dd3fc;
   border-color: rgba(56, 189, 248, 0.4);
 }
+
+/* Daily reminder section */
+.reminder-hint {
+  margin: 6px 0 10px 26px;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.reminder-test-btn {
+  margin-left: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}

@@ -1,5 +1,6 @@
 package com.example.taskmanager.service;
 
+import com.example.taskmanager.model.ReminderConfig;
 import com.example.taskmanager.model.Task;
 import com.example.taskmanager.model.TaskStatus;
 import com.example.taskmanager.repository.TaskRepository;
@@ -21,34 +22,30 @@ public class ReminderScheduler {
 
     private final TaskRepository taskRepository;
     private final NotificationService notificationService;
-
-    @Value("${reminder.enabled:false}")
-    private boolean enabled;
-
-    @Value("${reminder.email:}")
-    private String email;
-
-    @Value("${reminder.phone:}")
-    private String phone;
+    private final ReminderConfigService configService;
 
     @Value("${reminder.timezone:UTC}")
     private String timezone;
 
-    public ReminderScheduler(TaskRepository taskRepository, NotificationService notificationService) {
+    public ReminderScheduler(TaskRepository taskRepository,
+                             NotificationService notificationService,
+                             ReminderConfigService configService) {
         this.taskRepository = taskRepository;
         this.notificationService = notificationService;
+        this.configService = configService;
     }
 
     @Scheduled(cron = "${reminder.cron:0 0 8 * * *}", zone = "${reminder.timezone:UTC}")
     public void sendDailyReminders() {
-        if (!enabled) {
+        ReminderConfig config = configService.get();
+        if (!config.isEnabled()) {
             log.debug("Daily reminders disabled — skipping");
             return;
         }
-        boolean emailTarget = email != null && !email.isBlank();
-        boolean smsTarget = phone != null && !phone.isBlank();
+        boolean emailTarget = config.getEmail() != null && !config.getEmail().isBlank();
+        boolean smsTarget = config.getPhone() != null && !config.getPhone().isBlank();
         if (!emailTarget && !smsTarget) {
-            log.warn("Reminder enabled but neither reminder.email nor reminder.phone is set");
+            log.warn("Reminder enabled but no email or phone configured");
             return;
         }
 
@@ -88,12 +85,12 @@ public class ReminderScheduler {
         String bodyText = body.toString();
 
         if (emailTarget) {
-            String result = notificationService.deliverEmail(email, subject, bodyText);
+            String result = notificationService.deliverEmail(config.getEmail(), subject, bodyText);
             log.info("Daily reminder email: {}", result);
         }
         if (smsTarget) {
             String smsBody = subject + "\n\n" + bodyText;
-            String result = notificationService.deliverSms(phone, smsBody);
+            String result = notificationService.deliverSms(config.getPhone(), smsBody);
             log.info("Daily reminder SMS: {}", result);
         }
     }
