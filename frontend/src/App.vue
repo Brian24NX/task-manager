@@ -665,6 +665,25 @@ function checkSessionExpiry() {
 
 let sessionCheckInterval = null
 
+const BASE_TITLE = 'Task Manager'
+function updateTabTitle() {
+  if (typeof document === 'undefined') return
+  if (!authed.value) {
+    document.title = BASE_TITLE
+    return
+  }
+  const overdue = stats.value.overdue || 0
+  const active = (stats.value.todo || 0) + (stats.value.inProgress || 0)
+  if (overdue > 0) {
+    document.title = `(${overdue}!) ${BASE_TITLE}`
+  } else if (active > 0) {
+    document.title = `(${active}) ${BASE_TITLE}`
+  } else {
+    document.title = BASE_TITLE
+  }
+}
+watch([authed, () => stats.value.overdue, () => stats.value.todo, () => stats.value.inProgress], updateTabTitle, { immediate: true })
+
 onMounted(() => {
   if (authed.value) {
     const hasCache = tasks.value.length > 0
