@@ -550,10 +550,18 @@ async function quickStatus(task, status, event) {
     }
     const res = await authedFetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not update status')
-    const updated = await res.json()
-    applyLocalTasks(tasks.value.map(t => t.id === updated.id ? updated : t))
+    const payload = await res.json()
+    const updated = payload.task || payload
+    const nextInstance = payload.next || null
+    let nextList = tasks.value.map(t => t.id === updated.id ? updated : t)
+    if (nextInstance) nextList = [nextInstance, ...nextList]
+    applyLocalTasks(nextList)
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
-    addToast(`Task ${label}`, 'success', () => undoStatusChange(updated.id, previousStatus))
+    if (nextInstance) {
+      addToast(`Task ${label} · next one due ${nextInstance.dueDate}`, 'success', () => undoStatusChange(updated.id, previousStatus, nextInstance.id))
+    } else {
+      addToast(`Task ${label}`, 'success', () => undoStatusChange(updated.id, previousStatus, null))
+    }
 
     if (status === 'DONE' && notifySettings.value.onComplete) {
       sendNotification(
@@ -568,12 +576,20 @@ async function quickStatus(task, status, event) {
   }
 }
 
-async function undoStatusChange(id, previousStatus) {
+async function undoStatusChange(id, previousStatus, createdInstanceId) {
   try {
     const res = await authedFetch(`${API}/${id}/status?status=${previousStatus}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not undo status change')
-    const reverted = await res.json()
-    applyLocalTasks(tasks.value.map(t => t.id === reverted.id ? reverted : t))
+    const payload = await res.json()
+    const reverted = payload.task || payload
+    let next = tasks.value.map(t => t.id === reverted.id ? reverted : t)
+    if (createdInstanceId) {
+      try {
+        await authedFetch(`${API}/${createdInstanceId}`, { method: 'DELETE' })
+      } catch (_) {}
+      next = next.filter(t => t.id !== createdInstanceId)
+    }
+    applyLocalTasks(next)
     addToast('Reverted')
   } catch (err) {
     addToast(err.message, 'error')
@@ -697,6 +713,19 @@ function priorityLabel(p) {
 
 function statusLabel(s) {
   return { TODO: 'To Do', IN_PROGRESS: 'In Progress', DONE: 'Done' }[s] || s
+}
+
+function recurrenceShort(task) {
+  const n = task.recurrenceInterval || 1
+  const unit = { DAILY: 'd', WEEKLY: 'w', MONTHLY: 'mo' }[task.recurrence] || ''
+  return n === 1 ? `Every ${unit === 'mo' ? 'month' : unit === 'w' ? 'week' : 'day'}` : `${n}${unit}`
+}
+
+function recurrenceLabel(task) {
+  const n = task.recurrenceInterval || 1
+  const unit = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month' }[task.recurrence] || ''
+  if (!unit) return ''
+  return n === 1 ? `Repeats every ${unit}` : `Repeats every ${n} ${unit}s`
 }
 
 function checkSessionExpiry() {
@@ -1263,6 +1292,10 @@ onUnmounted(() => {
                 <span class="priority-dot" :class="task.priority || 'MEDIUM'"></span>
                 {{ priorityLabel(task.priority) }}
               </span>
+              <span v-if="task.recurrence && task.recurrence !== 'NONE'" class="recurrence-chip" :title="recurrenceLabel(task)">
+                <span class="material-symbols-rounded">autorenew</span>
+                {{ recurrenceShort(task) }}
+              </span>
             </div>
 
             <div class="task-actions">
@@ -1324,6 +1357,10 @@ onUnmounted(() => {
             <span class="priority-label">
               <span class="priority-dot" :class="task.priority || 'MEDIUM'"></span>
               {{ priorityLabel(task.priority) }}
+            </span>
+            <span v-if="task.recurrence && task.recurrence !== 'NONE'" class="recurrence-chip" :title="recurrenceLabel(task)">
+              <span class="material-symbols-rounded">autorenew</span>
+              {{ recurrenceShort(task) }}
             </span>
           </div>
 
@@ -1388,6 +1425,10 @@ onUnmounted(() => {
               <span class="priority-label">
                 <span class="priority-dot" :class="task.priority || 'MEDIUM'"></span>
                 {{ priorityLabel(task.priority) }}
+              </span>
+              <span v-if="task.recurrence && task.recurrence !== 'NONE'" class="recurrence-chip" :title="recurrenceLabel(task)">
+                <span class="material-symbols-rounded">autorenew</span>
+                {{ recurrenceShort(task) }}
               </span>
             </div>
 

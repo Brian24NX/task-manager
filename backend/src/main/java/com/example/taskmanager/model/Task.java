@@ -49,6 +49,13 @@ public class Task {
     @Column(nullable = false, length = 10)
     private TaskPriority priority = TaskPriority.MEDIUM;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private Recurrence recurrence = Recurrence.NONE;
+
+    @Column
+    private Integer recurrenceInterval = 1;
+
     @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -79,6 +86,10 @@ public class Task {
     public void setStatus(TaskStatus status) { this.status = status; }
     public TaskPriority getPriority() { return priority; }
     public void setPriority(TaskPriority priority) { this.priority = priority; }
+    public Recurrence getRecurrence() { return recurrence; }
+    public void setRecurrence(Recurrence recurrence) { this.recurrence = recurrence; }
+    public Integer getRecurrenceInterval() { return recurrenceInterval; }
+    public void setRecurrenceInterval(Integer recurrenceInterval) { this.recurrenceInterval = recurrenceInterval; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

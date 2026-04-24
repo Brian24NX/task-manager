@@ -1,5 +1,6 @@
 package com.example.taskmanager.service;
 
+import com.example.taskmanager.model.Recurrence;
 import com.example.taskmanager.model.Task;
 import com.example.taskmanager.model.TaskPriority;
 import com.example.taskmanager.model.TaskStatus;
@@ -44,13 +45,52 @@ public class TaskService {
         existing.setDueDate(updatedTask.getDueDate());
         existing.setStatus(updatedTask.getStatus());
         existing.setPriority(updatedTask.getPriority());
+        existing.setRecurrence(updatedTask.getRecurrence() != null ? updatedTask.getRecurrence() : Recurrence.NONE);
+        existing.setRecurrenceInterval(updatedTask.getRecurrenceInterval() != null ? updatedTask.getRecurrenceInterval() : 1);
         return taskRepository.save(existing);
     }
 
-    public Task updateStatus(Long id, TaskStatus status) {
+    public record StatusChangeResult(Task task, Task next) {}
+
+    public StatusChangeResult updateStatus(Long id, TaskStatus status) {
         Task existing = findById(id);
+        TaskStatus previous = existing.getStatus();
         existing.setStatus(status);
-        return taskRepository.save(existing);
+        Task saved = taskRepository.save(existing);
+
+        Task next = null;
+        boolean justCompleted = status == TaskStatus.DONE && previous != TaskStatus.DONE;
+        if (justCompleted && saved.getRecurrence() != null && saved.getRecurrence() != Recurrence.NONE) {
+            next = createNextInstance(saved);
+        }
+        return new StatusChangeResult(saved, next);
+    }
+
+    private Task createNextInstance(Task completed) {
+        int interval = completed.getRecurrenceInterval() != null && completed.getRecurrenceInterval() > 0
+                ? completed.getRecurrenceInterval()
+                : 1;
+        LocalDate today = LocalDate.now();
+        LocalDate base = completed.getDueDate() != null && !completed.getDueDate().isBefore(today)
+                ? completed.getDueDate()
+                : today;
+        LocalDate nextDueDate = switch (completed.getRecurrence()) {
+            case DAILY -> base.plusDays(interval);
+            case WEEKLY -> base.plusWeeks(interval);
+            case MONTHLY -> base.plusMonths(interval);
+            default -> null;
+        };
+        if (nextDueDate == null) return null;
+
+        Task next = new Task();
+        next.setTitle(completed.getTitle());
+        next.setDescription(completed.getDescription());
+        next.setDueDate(nextDueDate);
+        next.setStatus(TaskStatus.TODO);
+        next.setPriority(completed.getPriority());
+        next.setRecurrence(completed.getRecurrence());
+        next.setRecurrenceInterval(interval);
+        return taskRepository.save(next);
     }
 
     public void delete(Long id) {

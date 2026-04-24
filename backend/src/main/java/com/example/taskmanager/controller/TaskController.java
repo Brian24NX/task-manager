@@ -52,8 +52,12 @@ public class TaskController {
     }
 
     @PatchMapping("/{id}/status")
-    public Task updateStatus(@PathVariable Long id, @RequestParam TaskStatus status) {
-        return taskService.updateStatus(id, status);
+    public Map<String, Object> updateStatus(@PathVariable Long id, @RequestParam TaskStatus status) {
+        TaskService.StatusChangeResult result = taskService.updateStatus(id, status);
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("task", result.task());
+        response.put("next", result.next());
+        return response;
     }
 
     @GetMapping("/search")

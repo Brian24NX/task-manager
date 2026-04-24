@@ -17,6 +17,8 @@ const form = reactive({
   dueDate: '',
   status: 'TODO',
   priority: 'MEDIUM',
+  recurrence: 'NONE',
+  recurrenceInterval: 1,
   notifyEmail: false,
   notifySms: false
 })
@@ -65,6 +67,8 @@ watch(
     form.dueDate = task?.dueDate ?? ''
     form.status = task?.status ?? 'TODO'
     form.priority = task?.priority ?? 'MEDIUM'
+    form.recurrence = task?.recurrence ?? 'NONE'
+    form.recurrenceInterval = task?.recurrenceInterval ?? 1
     form.notifyEmail = false
     form.notifySms = false
     errors.title = ''
@@ -180,6 +184,38 @@ async function submitForm() {
             <option value="HIGH">&#x1F7E0; High</option>
             <option value="URGENT">&#x1F534; Urgent</option>
           </select>
+        </div>
+      </div>
+
+      <div class="recurrence-section">
+        <label class="recurrence-label">
+          <span class="material-symbols-rounded" style="font-size:18px">autorenew</span>
+          Repeat
+        </label>
+        <div class="recurrence-controls">
+          <select v-model="form.recurrence" class="recurrence-select">
+            <option value="NONE">Does not repeat</option>
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+            <option value="MONTHLY">Monthly</option>
+          </select>
+          <template v-if="form.recurrence !== 'NONE'">
+            <span class="recurrence-every">every</span>
+            <input
+              type="number"
+              min="1"
+              max="365"
+              v-model.number="form.recurrenceInterval"
+              class="recurrence-interval"
+            />
+            <span class="recurrence-unit">{{
+              form.recurrence === 'DAILY'
+                ? (form.recurrenceInterval === 1 ? 'day' : 'days')
+                : form.recurrence === 'WEEKLY'
+                  ? (form.recurrenceInterval === 1 ? 'week' : 'weeks')
+                  : (form.recurrenceInterval === 1 ? 'month' : 'months')
+            }}</span>
+          </template>
         </div>
       </div>
 
