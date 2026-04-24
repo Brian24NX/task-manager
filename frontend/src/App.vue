@@ -371,10 +371,13 @@ function fireConfetti(anchorEl) {
 
 // --- Toasts ---
 let toastId = 0
-function addToast(message, type = 'success') {
+function addToast(message, type = 'success', undo = null, duration = null) {
   const id = ++toastId
-  toasts.value.push({ id, message, type, leaving: false })
-  setTimeout(() => removeToast(id), 3500)
+  const entry = { id, message, type, leaving: false, undo, used: false }
+  toasts.value.push(entry)
+  const ttl = duration ?? (undo ? 6000 : 3500)
+  setTimeout(() => removeToast(id), ttl)
+  return id
 }
 
 function removeToast(id) {
@@ -385,6 +388,13 @@ function removeToast(id) {
       toasts.value = toasts.value.filter(t => t.id !== id)
     }, 300)
   }
+}
+
+function invokeUndo(toast) {
+  if (!toast || toast.used || !toast.undo) return
+  toast.used = true
+  try { toast.undo() } catch (_) {}
+  removeToast(toast.id)
 }
 
 function toastIcon(type) {
@@ -533,6 +543,7 @@ async function saveTask(task) {
 }
 
 async function quickStatus(task, status, event) {
+  const previousStatus = task.status
   try {
     if (status === 'DONE' && event?.currentTarget) {
       fireConfetti(event.currentTarget)
@@ -542,7 +553,7 @@ async function quickStatus(task, status, event) {
     const updated = await res.json()
     applyLocalTasks(tasks.value.map(t => t.id === updated.id ? updated : t))
     const label = status === 'DONE' ? 'marked as done' : status === 'IN_PROGRESS' ? 'moved to in progress' : 'moved to to-do'
-    addToast(`Task ${label}`)
+    addToast(`Task ${label}`, 'success', () => undoStatusChange(updated.id, previousStatus))
 
     if (status === 'DONE' && notifySettings.value.onComplete) {
       sendNotification(
@@ -557,6 +568,18 @@ async function quickStatus(task, status, event) {
   }
 }
 
+async function undoStatusChange(id, previousStatus) {
+  try {
+    const res = await authedFetch(`${API}/${id}/status?status=${previousStatus}`, { method: 'PATCH' })
+    if (!res.ok) throw new Error('Could not undo status change')
+    const reverted = await res.json()
+    applyLocalTasks(tasks.value.map(t => t.id === reverted.id ? reverted : t))
+    addToast('Reverted')
+  } catch (err) {
+    addToast(err.message, 'error')
+  }
+}
+
 function confirmDelete(task) {
   taskToDelete.value = task
   showDeleteConfirm.value = true
@@ -564,14 +587,31 @@ function confirmDelete(task) {
 
 async function executeDelete() {
   if (!taskToDelete.value) return
+  const deletedSnapshot = { ...taskToDelete.value }
   try {
-    const id = taskToDelete.value.id
-    const res = await authedFetch(`${API}/${id}`, { method: 'DELETE' })
+    const res = await authedFetch(`${API}/${deletedSnapshot.id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Could not delete task')
-    applyLocalTasks(tasks.value.filter(t => t.id !== id))
-    addToast('Task deleted successfully')
+    applyLocalTasks(tasks.value.filter(t => t.id !== deletedSnapshot.id))
     showDeleteConfirm.value = false
     taskToDelete.value = null
+    addToast('Task deleted', 'success', () => undoDelete(deletedSnapshot))
+  } catch (err) {
+    addToast(err.message, 'error')
+  }
+}
+
+async function undoDelete(snapshot) {
+  const { id, createdAt, updatedAt, ...payload } = snapshot
+  try {
+    const res = await authedFetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    if (!res.ok) throw new Error('Could not restore task')
+    const restored = await res.json()
+    applyLocalTasks([restored, ...tasks.value])
+    addToast('Task restored')
   } catch (err) {
     addToast(err.message, 'error')
   }
@@ -902,6 +942,10 @@ onUnmounted(() => {
     >
       <span class="material-symbols-rounded">{{ toastIcon(toast.type) }}</span>
       <span class="toast-message">{{ toast.message }}</span>
+      <button v-if="toast.undo && !toast.used" class="toast-undo" @click="invokeUndo(toast)">
+        <span class="material-symbols-rounded">undo</span>
+        Undo
+      </button>
     </div>
   </div>
 
