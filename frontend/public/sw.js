@@ -1,8 +1,16 @@
-const VERSION = 'v1'
+const VERSION = 'v2'
 const SHELL_CACHE = `shell-${VERSION}`
 const ASSET_CACHE = `assets-${VERSION}`
 
-const SHELL_URLS = ['/', '/index.html', '/favicon.svg']
+const SHELL_URLS = [
+  '/',
+  '/index.html',
+  '/favicon.svg',
+  '/manifest.webmanifest',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png'
+]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
