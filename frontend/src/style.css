@@ -1997,3 +1997,53 @@ body::before {
   .weather-widget { padding: 0.4rem 0.75rem; }
   .weather-loc { display: none; }
 }
+
+/* Keyboard hints & shortcut modal */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  line-height: 1;
+}
+.shortcuts-card { max-width: 440px; }
+.shortcut-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.shortcut-list li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+}
+.shortcut-list kbd {
+  min-width: 40px;
+  padding: 5px 9px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  text-align: center;
+}
+.shortcut-list span { color: var(--text-2); font-size: 0.95rem; }

@@ -665,6 +665,42 @@ function checkSessionExpiry() {
 
 let sessionCheckInterval = null
 
+const showShortcutHelp = ref(false)
+
+function onGlobalKeydown(e) {
+  const target = e.target
+  const tag = target?.tagName
+  const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || target?.isContentEditable
+
+  if (e.key === 'Escape') {
+    if (inInput) {
+      target.blur()
+      return
+    }
+    if (showShortcutHelp.value) { showShortcutHelp.value = false; return }
+    if (showDeleteConfirm.value) { cancelDelete(); return }
+    if (showNotifySettings.value) { showNotifySettings.value = false; return }
+    if (showForm.value) { cancelForm(); return }
+    return
+  }
+
+  if (inInput) return
+  if (!authed.value) return
+  if (e.metaKey || e.ctrlKey || e.altKey) return
+
+  if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault()
+    if (!showForm.value) startCreate()
+  } else if (e.key === '/') {
+    e.preventDefault()
+    const searchInput = document.querySelector('.header-search-input')
+    if (searchInput) searchInput.focus()
+  } else if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+    e.preventDefault()
+    showShortcutHelp.value = !showShortcutHelp.value
+  }
+}
+
 const BASE_TITLE = 'Task Manager'
 function updateTabTitle() {
   if (typeof document === 'undefined') return
@@ -694,12 +730,14 @@ onMounted(() => {
   sessionCheckInterval = setInterval(checkSessionExpiry, 30 * 1000)
   window.addEventListener('tm:unauthorized', onUnauthorized)
   window.addEventListener('focus', checkSessionExpiry)
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   if (sessionCheckInterval) clearInterval(sessionCheckInterval)
   window.removeEventListener('tm:unauthorized', onUnauthorized)
   window.removeEventListener('focus', checkSessionExpiry)
+  window.removeEventListener('keydown', onGlobalKeydown)
 })
 </script>
 
@@ -885,6 +923,25 @@ onUnmounted(() => {
     </div>
   </div>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <div v-if="showShortcutHelp" class="modal-overlay" @click.self="showShortcutHelp = false">
+    <div class="modal-card shortcuts-card">
+      <div class="modal-icon">
+        <span class="material-symbols-rounded">keyboard</span>
+      </div>
+      <h3>Keyboard Shortcuts</h3>
+      <ul class="shortcut-list">
+        <li><kbd>N</kbd><span>New task</span></li>
+        <li><kbd>/</kbd><span>Focus search</span></li>
+        <li><kbd>Esc</kbd><span>Close form / modal / blur input</span></li>
+        <li><kbd>?</kbd><span>Toggle this help</span></li>
+      </ul>
+      <div class="modal-actions">
+        <button class="btn-submit" @click="showShortcutHelp = false">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Notification Settings Modal -->
   <div v-if="showNotifySettings" class="modal-overlay" @click.self="showNotifySettings = false">
     <div class="modal-card notify-settings-card">
@@ -959,7 +1016,8 @@ onUnmounted(() => {
               v-model="searchQuery"
               type="text"
               class="header-search-input"
-              placeholder="Search tasks…"
+              placeholder="Search tasks…  ( / )"
+              title="Search (/)"
             />
             <button
               v-if="searchQuery"
@@ -996,6 +1054,9 @@ onUnmounted(() => {
           </button>
           <button class="btn-notify-settings" @click="showNotifySettings = true" title="Notification Settings">
             <span class="material-symbols-rounded">notifications</span>
+          </button>
+          <button class="btn-notify-settings" @click="showShortcutHelp = true" title="Keyboard shortcuts (?)">
+            <span class="material-symbols-rounded">keyboard</span>
           </button>
           <button class="btn-notify-settings" @click="logout" title="Sign out">
             <span class="material-symbols-rounded">logout</span>
@@ -1101,9 +1162,10 @@ onUnmounted(() => {
           <span class="material-symbols-rounded">close</span>
         </button>
       </div>
-      <button class="btn-primary new-task-btn" @click="startCreate">
+      <button class="btn-primary new-task-btn" @click="startCreate" title="New Task (n)">
         <span class="material-symbols-rounded">add</span>
         New Task
+        <kbd class="kbd-hint">N</kbd>
       </button>
     </div>
 
