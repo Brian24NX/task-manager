@@ -1,5 +1,6 @@
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { parseNaturalDate } from '../utils/naturalDate.js'
 
 const props = defineProps({
   modelValue: {
@@ -26,6 +27,35 @@ const errors = reactive({
 })
 
 const submitting = ref(false)
+
+const naturalDateInput = ref('')
+const naturalPreview = computed(() => {
+  if (!naturalDateInput.value.trim()) return ''
+  const parsed = parseNaturalDate(naturalDateInput.value)
+  return parsed || ''
+})
+const naturalMatch = computed(() => Boolean(naturalPreview.value))
+
+function applyNaturalDate() {
+  if (naturalPreview.value) {
+    form.dueDate = naturalPreview.value
+    naturalDateInput.value = ''
+  }
+}
+
+function onNaturalEnter(e) {
+  if (naturalPreview.value) {
+    e.preventDefault()
+    applyNaturalDate()
+  }
+}
+
+function formatNaturalPreview(iso) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
 
 watch(
   () => props.modelValue,
@@ -111,6 +141,25 @@ async function submitForm() {
             type="date"
             :class="{ error: errors.dueDate }"
           />
+          <div class="natural-date-row">
+            <input
+              type="text"
+              v-model="naturalDateInput"
+              class="natural-date-input"
+              placeholder="or type: tomorrow, next fri, in 3 days"
+              @keydown.enter="onNaturalEnter"
+              @blur="applyNaturalDate"
+            />
+            <button
+              v-if="naturalMatch"
+              type="button"
+              class="natural-date-apply"
+              @click="applyNaturalDate"
+              title="Apply"
+            >
+              → {{ formatNaturalPreview(naturalPreview) }}
+            </button>
+          </div>
           <div v-if="errors.dueDate" class="field-error">{{ errors.dueDate }}</div>
         </div>
 
