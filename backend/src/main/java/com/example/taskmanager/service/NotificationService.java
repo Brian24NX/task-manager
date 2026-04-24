@@ -51,6 +51,14 @@ public class NotificationService {
         return results;
     }
 
+    public String deliverEmail(String to, String subject, String body) {
+        return sendEmail(to, subject, body);
+    }
+
+    public String deliverSms(String to, String body) {
+        return sendSms(to, body);
+    }
+
     private String sendEmail(String to, String subject, String body) {
         if (resendApiKey == null || resendApiKey.isBlank()) {
             log.warn("Resend API key not configured — skipping email notification");
@@ -65,9 +73,9 @@ public class NotificationService {
                       "text": "%s"
                     }
                     """.formatted(
-                    to.replace("\"", "\\\""),
-                    subject.replace("\"", "\\\""),
-                    body.replace("\"", "\\\"")
+                    escapeJson(to),
+                    escapeJson(subject),
+                    escapeJson(body)
             );
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -110,6 +118,28 @@ public class NotificationService {
             log.error("Failed to send SMS to {}: {}", to, e.getMessage());
             return "SMS failed: " + e.getMessage();
         }
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
+                default -> {
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private String buildSubject(NotificationRequest request) {
