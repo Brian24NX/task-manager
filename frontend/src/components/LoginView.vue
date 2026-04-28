@@ -13,6 +13,8 @@ const usernameInput = ref(null)
 
 onMounted(() => {
   nextTick(() => usernameInput.value?.focus())
+  const apiBase = import.meta.env.VITE_API_URL || ''
+  fetch(`${apiBase}/api/health`, { method: 'GET', cache: 'no-store' }).catch(() => {})
 })
 
 async function handleSubmit() {
