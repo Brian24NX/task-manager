@@ -8,13 +8,13 @@ const username = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const slowWake = ref(false)
 const showPassword = ref(false)
 const usernameInput = ref(null)
+let slowWakeTimer = null
 
 onMounted(() => {
   nextTick(() => usernameInput.value?.focus())
-  const apiBase = import.meta.env.VITE_API_URL || ''
-  fetch(`${apiBase}/api/health`, { method: 'GET', cache: 'no-store' }).catch(() => {})
 })
 
 async function handleSubmit() {
@@ -25,6 +25,8 @@ async function handleSubmit() {
     return
   }
   loading.value = true
+  slowWake.value = false
+  slowWakeTimer = setTimeout(() => { slowWake.value = true }, 3000)
   try {
     const result = await login(username.value.trim(), password.value)
     emit('success', result)
@@ -32,7 +34,10 @@ async function handleSubmit() {
     error.value = err.message || 'Login failed'
     password.value = ''
   } finally {
+    clearTimeout(slowWakeTimer)
+    slowWakeTimer = null
     loading.value = false
+    slowWake.value = false
   }
 }
 </script>
@@ -104,6 +109,11 @@ async function handleSubmit() {
           <span v-else class="material-symbols-rounded">login</span>
           <span>{{ loading ? 'Signing in…' : 'Sign In' }}</span>
         </button>
+
+        <p v-if="slowWake" class="login-wake-hint">
+          <span class="material-symbols-rounded">bedtime</span>
+          Waking up the server — first sign-in can take ~60s.
+        </p>
       </form>
 
       <p class="login-footer">Stay organized, stay productive.</p>
@@ -311,6 +321,22 @@ async function handleSubmit() {
   animation: login-spin 0.7s linear infinite;
 }
 @keyframes login-spin { to { transform: rotate(360deg); } }
+
+.login-wake-hint {
+  margin: 4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-3, #64748b);
+  text-align: center;
+  animation: login-enter 0.3s ease-out;
+}
+.login-wake-hint .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--sky-500, #0ea5e9);
+}
 
 .login-footer {
   margin: 24px 0 0;
