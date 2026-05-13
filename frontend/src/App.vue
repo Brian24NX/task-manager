@@ -1,33 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TaskForm from './components/TaskForm.vue'
-import LoginView from './components/LoginView.vue'
-import { authedFetch, clearAuth, isAuthed } from './auth.js'
 
 const API = (import.meta.env.VITE_API_URL || '') + '/api/tasks'
-
-const authed = ref(isAuthed())
-function onAuthSuccess() {
-  authed.value = true
-  const hasCache = tasks.value.length > 0
-  Promise.all([fetchTasks({ silent: hasCache }), refreshStats(), loadReminderConfig()])
-}
-function logout() {
-  clearAuth()
-  authed.value = false
-  tasks.value = []
-  stats.value = { total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0 }
-  try {
-    localStorage.removeItem(CACHE_KEY)
-    localStorage.removeItem(STATS_CACHE_KEY)
-  } catch (_) {}
-}
-function onUnauthorized() {
-  if (authed.value) {
-    authed.value = false
-    addToast('Session expired — please sign in again', 'warning')
-  }
-}
 
 const CACHE_KEY = 'tm_tasks_cache_v1'
 const STATS_CACHE_KEY = 'tm_stats_cache_v1'
@@ -271,9 +246,8 @@ const reminderConfig = ref({ enabled: false, email: '', phone: '' })
 const reminderLoading = ref(false)
 
 async function loadReminderConfig() {
-  if (!authed.value) return
   try {
-    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config')
+    const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config')
     if (!res.ok) return
     const data = await res.json()
     reminderConfig.value = {
@@ -292,7 +266,7 @@ async function saveReminderConfig() {
       email: notifySettings.value.email || null,
       phone: notifySettings.value.phone || null
     }
-    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config', {
+    const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -312,7 +286,7 @@ async function saveReminderConfig() {
 async function testReminderNow() {
   try {
     await saveReminderConfig()
-    const res = await authedFetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/test', { method: 'POST' })
+    const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/reminders/test', { method: 'POST' })
     if (!res.ok) throw new Error('Test failed')
     addToast('Test reminder triggered — check your inbox/phone', 'success')
   } catch (err) {
@@ -462,11 +436,9 @@ function toastIcon(type) {
 
 // --- API ---
 async function fetchTasks({ silent = false } = {}) {
-  if (!authed.value) return
   if (!silent) loading.value = true
   try {
-    const res = await authedFetch(API)
-    if (res.status === 401) return
+    const res = await fetch(API)
     if (!res.ok) throw new Error('Could not load tasks')
     tasks.value = await res.json()
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks.value)) } catch (_) {}
@@ -484,7 +456,7 @@ async function searchTasks(q) {
   }
   loading.value = true
   try {
-    const res = await authedFetch(`${API}/search?q=${encodeURIComponent(q)}`)
+    const res = await fetch(`${API}/search?q=${encodeURIComponent(q)}`)
     if (!res.ok) throw new Error('Search failed')
     tasks.value = await res.json()
   } catch (err) {
@@ -495,9 +467,8 @@ async function searchTasks(q) {
 }
 
 async function refreshStats() {
-  if (!authed.value) return
   try {
-    const res = await authedFetch(`${API}/stats`)
+    const res = await fetch(`${API}/stats`)
     if (res.ok) {
       stats.value = await res.json()
       try { localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(stats.value)) } catch (_) {}
@@ -546,7 +517,7 @@ async function sendNotification(taskTitle, eventType, notifyEmail, notifySms) {
   if (!notifyEmail && !notifySms) return
   const NOTIFY_API = (import.meta.env.VITE_API_URL || '') + '/api/notifications/send'
   try {
-    const res = await authedFetch(NOTIFY_API, {
+    const res = await fetch(NOTIFY_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -579,7 +550,7 @@ async function saveTask(task) {
   const { notifyEmail, notifySms, ...taskData } = task
 
   try {
-    const res = await authedFetch(url, {
+    const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(taskData)
@@ -610,7 +581,7 @@ async function quickStatus(task, status, event) {
     if (status === 'DONE' && event?.currentTarget) {
       fireConfetti(event.currentTarget)
     }
-    const res = await authedFetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
+    const res = await fetch(`${API}/${task.id}/status?status=${status}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not update status')
     const payload = await res.json()
     const updated = payload.task || payload
@@ -640,14 +611,14 @@ async function quickStatus(task, status, event) {
 
 async function undoStatusChange(id, previousStatus, createdInstanceId) {
   try {
-    const res = await authedFetch(`${API}/${id}/status?status=${previousStatus}`, { method: 'PATCH' })
+    const res = await fetch(`${API}/${id}/status?status=${previousStatus}`, { method: 'PATCH' })
     if (!res.ok) throw new Error('Could not undo status change')
     const payload = await res.json()
     const reverted = payload.task || payload
     let next = tasks.value.map(t => t.id === reverted.id ? reverted : t)
     if (createdInstanceId) {
       try {
-        await authedFetch(`${API}/${createdInstanceId}`, { method: 'DELETE' })
+        await fetch(`${API}/${createdInstanceId}`, { method: 'DELETE' })
       } catch (_) {}
       next = next.filter(t => t.id !== createdInstanceId)
     }
@@ -667,7 +638,7 @@ async function executeDelete() {
   if (!taskToDelete.value) return
   const deletedSnapshot = { ...taskToDelete.value }
   try {
-    const res = await authedFetch(`${API}/${deletedSnapshot.id}`, { method: 'DELETE' })
+    const res = await fetch(`${API}/${deletedSnapshot.id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Could not delete task')
     applyLocalTasks(tasks.value.filter(t => t.id !== deletedSnapshot.id))
     showDeleteConfirm.value = false
@@ -681,7 +652,7 @@ async function executeDelete() {
 async function undoDelete(snapshot) {
   const { id, createdAt, updatedAt, ...payload } = snapshot
   try {
-    const res = await authedFetch(API, {
+    const res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -790,12 +761,6 @@ function recurrenceLabel(task) {
   return n === 1 ? `Repeats every ${unit}` : `Repeats every ${n} ${unit}s`
 }
 
-function checkSessionExpiry() {
-  if (authed.value && !isAuthed()) onUnauthorized()
-}
-
-let sessionCheckInterval = null
-
 const showShortcutHelp = ref(false)
 
 function onGlobalKeydown(e) {
@@ -816,7 +781,6 @@ function onGlobalKeydown(e) {
   }
 
   if (inInput) return
-  if (!authed.value) return
   if (e.metaKey || e.ctrlKey || e.altKey) return
 
   if (e.key === 'n' || e.key === 'N') {
@@ -835,10 +799,6 @@ function onGlobalKeydown(e) {
 const BASE_TITLE = 'Task Manager'
 function updateTabTitle() {
   if (typeof document === 'undefined') return
-  if (!authed.value) {
-    document.title = BASE_TITLE
-    return
-  }
   const overdue = stats.value.overdue || 0
   const active = (stats.value.todo || 0) + (stats.value.inProgress || 0)
   if (overdue > 0) {
@@ -849,25 +809,17 @@ function updateTabTitle() {
     document.title = BASE_TITLE
   }
 }
-watch([authed, () => stats.value.overdue, () => stats.value.todo, () => stats.value.inProgress], updateTabTitle, { immediate: true })
+watch([() => stats.value.overdue, () => stats.value.todo, () => stats.value.inProgress], updateTabTitle, { immediate: true })
 
 onMounted(() => {
-  if (authed.value) {
-    const hasCache = tasks.value.length > 0
-    Promise.all([fetchTasks({ silent: hasCache }), refreshStats(), loadReminderConfig()])
-  }
+  const hasCache = tasks.value.length > 0
+  Promise.all([fetchTasks({ silent: hasCache }), refreshStats(), loadReminderConfig()])
   loadWeather()
   setInterval(() => { currentHour.value = new Date().getHours() }, 60 * 1000)
-  sessionCheckInterval = setInterval(checkSessionExpiry, 30 * 1000)
-  window.addEventListener('tm:unauthorized', onUnauthorized)
-  window.addEventListener('focus', checkSessionExpiry)
   window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
-  if (sessionCheckInterval) clearInterval(sessionCheckInterval)
-  window.removeEventListener('tm:unauthorized', onUnauthorized)
-  window.removeEventListener('focus', checkSessionExpiry)
   window.removeEventListener('keydown', onGlobalKeydown)
 })
 </script>
@@ -1019,10 +971,6 @@ onUnmounted(() => {
     </svg>
   </div>
 
-  <!-- Login gate -->
-  <LoginView v-if="!authed" @success="onAuthSuccess" />
-
-  <template v-else>
   <!-- Toasts -->
   <div class="toast-container">
     <div
@@ -1212,9 +1160,6 @@ onUnmounted(() => {
           </button>
           <button class="btn-notify-settings" @click="showShortcutHelp = true" title="Keyboard shortcuts (?)">
             <span class="material-symbols-rounded">keyboard</span>
-          </button>
-          <button class="btn-notify-settings" @click="logout" title="Sign out">
-            <span class="material-symbols-rounded">logout</span>
           </button>
         </div>
       </div>
@@ -1562,5 +1507,4 @@ onUnmounted(() => {
   <footer class="app-footer">
     <p>Task Manager &middot; Stay organized, stay productive</p>
   </footer>
-  </template>
 </template>
