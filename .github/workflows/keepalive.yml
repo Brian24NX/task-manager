@@ -2,15 +2,21 @@ name: Keep API Awake
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # GitHub heavily throttles cron intervals shorter than ~15 min, so the
+    # actual cadence is best-effort regardless of what we put here.
+    - cron: "*/14 * * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      # continue-on-error keeps the run green so a cold-start timeout
+      # (or a temporary Render outage) doesn't spam failure emails.
       - name: Ping API health endpoint
+        continue-on-error: true
         run: |
-          curl -fsS --max-time 60 --retry 3 --retry-delay 5 \
+          curl -fsS --max-time 180 \
             https://task-manager-api-3f3d.onrender.com/api/health \
             -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n"
